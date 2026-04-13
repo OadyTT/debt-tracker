@@ -54,7 +54,7 @@ function doGet(e) {
     if (action === "getSettings")     return jsonResponse(getSettings());
     if (action === "getPending")      return jsonResponse(getPendingHelpers());
     if (action === "verifyVersion")   return jsonResponse(verifyVersion(e.parameter.code));
-    if (action === "lineIdPage")      return lineIdPage();
+    if (action === "lineIdPage")      return lineIdPage(e);
     return jsonResponse({ ok:false, error:"unknown action" });
   } catch(err) { return jsonResponse({ ok:false, error:err.message }); }
 }
@@ -540,24 +540,83 @@ function notifyEmail(d) {
 }
 
 // ════════════════════════════════════════════════
-//  lineIdPage — HTML helper
+//  lineIdPage — HTML helper with Add Friend button
 // ════════════════════════════════════════════════
-function lineIdPage() {
-  return HtmlService.createHtmlOutput(`<!DOCTYPE html>
+function lineIdPage(e) {
+  // รับ LINE OA ID จาก URL param (?oaId=@xxx)
+  const oaId = (e && e.parameter && e.parameter.oaId) ? e.parameter.oaId : "";
+  const addFriendUrl = oaId ? "https://line.me/R/ti/p/" + oaId : "";
+
+  const addFriendBtn = addFriendUrl ? `
+  <a href="${addFriendUrl}" class="add-btn">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M12 2C6.48 2 2 6.13 2 11.2c0 3.1 1.7 5.85 4.3 7.55v3.25l3.9-2.15c1.03.29 2.13.45 3.28.45 5.52 0 10-4.13 10-9.2S17.52 2 12 2z"/></svg>
+    เพิ่ม LINE OA เป็นเพื่อน
+  </a>` : `<div class="no-oa">⚠️ Admin ยังไม่ได้ตั้งค่า LINE OA ID<br><small>กรุณาติดต่อ Admin</small></div>`;
+
+  const html = `<!DOCTYPE html>
 <html lang="th">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <title>สมัครรับแจ้งเตือน LINE</title>
-<style>body{font-family:sans-serif;background:#f4f6f0;margin:0;padding:20px;}.card{background:#fff;border-radius:16px;padding:20px;max-width:380px;margin:0 auto;box-shadow:0 4px 20px rgba(0,0,0,.1);}h2{color:#1a3a2a;margin:0 0 12px;}.step{display:flex;gap:10px;margin-bottom:12px;align-items:flex-start;}.num{background:#06c755;color:#fff;border-radius:50%;width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:13px;}button{background:#06c755;color:#fff;border:none;border-radius:12px;padding:12px 20px;width:100%;font-size:16px;cursor:pointer;margin-top:12px;}</style>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{font-family:'Sarabun',sans-serif;background:linear-gradient(160deg,#1a3a2a,#0d1f17);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+  @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700;800&display=swap');
+  .card{background:#fff;border-radius:20px;padding:28px 24px;max-width:380px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);}
+  .header{text-align:center;margin-bottom:24px;}
+  .icon{font-size:44px;margin-bottom:10px;}
+  h2{color:#1a3a2a;font-size:20px;font-weight:800;margin-bottom:4px;}
+  .subtitle{color:#6b7280;font-size:14px;line-height:1.5;}
+  .add-btn{display:flex;align-items:center;justify-content:center;gap:10px;background:#06c755;color:#fff;padding:16px 24px;border-radius:50px;text-decoration:none;font-weight:800;font-size:17px;width:100%;margin-bottom:20px;box-shadow:0 4px 20px rgba(6,199,85,.4);transition:transform .15s;}
+  .add-btn:active{transform:scale(.97);}
+  .no-oa{background:#fff7ed;border-radius:10px;padding:12px;text-align:center;color:#92400e;font-size:14px;margin-bottom:20px;line-height:1.6;}
+  .divider{display:flex;align-items:center;gap:10px;margin-bottom:18px;}
+  .divider hr{flex:1;border:none;border-top:1px solid #e5e7eb;}
+  .divider span{color:#9ca3af;font-size:13px;white-space:nowrap;}
+  .step{display:flex;gap:12px;margin-bottom:14px;align-items:flex-start;}
+  .num{background:#1a3a2a;color:#fff;border-radius:50%;width:28px;height:28px;display:flex;align-items:center;justify-content:center;font-weight:700;flex-shrink:0;font-size:13px;}
+  .step-text{font-size:14px;color:#374151;line-height:1.5;padding-top:4px;}
+  .step-text b{color:#1a3a2a;}
+  .note{background:#f0fdf4;border-radius:12px;padding:12px 14px;font-size:13px;color:#15803d;line-height:1.6;display:flex;gap:8px;align-items:flex-start;}
+</style>
 </head>
 <body>
 <div class="card">
-  <h2>📱 สมัครรับแจ้งเตือน LINE</h2>
-  <p style="color:#6b7280;font-size:14px;">เพิ่ม LINE OA แล้วส่งข้อความใดก็ได้ ระบบจะจับ UID ของคุณอัตโนมัติ</p>
-  <div class="step"><div class="num">1</div><div>เพิ่ม LINE OA ของร้าน เป็นเพื่อน</div></div>
-  <div class="step"><div class="num">2</div><div>ส่งข้อความใดก็ได้ เช่น "สวัสดี"</div></div>
-  <div class="step"><div class="num">3</div><div>บอต LINE จะตอบกลับพร้อม User ID ของคุณ</div></div>
-  <div class="step"><div class="num">4</div><div>รอ Admin อนุมัติ</div></div>
-  <p style="background:#f0fdf4;border-radius:8px;padding:10px;font-size:13px;color:#15803d;">✅ หลังจากถูกอนุมัติ คุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้</p>
+  <div class="header">
+    <div class="icon">🏪</div>
+    <h2>สมัครรับแจ้งเตือน LINE</h2>
+    <p class="subtitle">เพิ่ม LINE OA แล้วส่งข้อความ<br>ระบบจะจับ User ID ของคุณอัตโนมัติ</p>
+  </div>
+
+  ${addFriendBtn}
+
+  <div class="divider"><hr><span>ขั้นตอน</span><hr></div>
+
+  <div class="step">
+    <div class="num">1</div>
+    <div class="step-text">กดปุ่ม <b>"เพิ่ม LINE OA เป็นเพื่อน"</b> ด้านบน</div>
+  </div>
+  <div class="step">
+    <div class="num">2</div>
+    <div class="step-text">ส่งข้อความใดก็ได้ เช่น <b>"สวัสดี"</b> หรือ <b>"เพิ่มฉัน"</b></div>
+  </div>
+  <div class="step">
+    <div class="num">3</div>
+    <div class="step-text">บอตจะตอบกลับพร้อม <b>User ID</b> ของคุณ (ขึ้นต้นด้วย U...)</div>
+  </div>
+  <div class="step">
+    <div class="num">4</div>
+    <div class="step-text">รอ <b>Admin อนุมัติ</b> — หลังอนุมัติจะได้รับแจ้งเตือนทุกครั้ง</div>
+  </div>
+
+  <div class="note">
+    <span>✅</span>
+    <span>หลังจากถูกอนุมัติ คุณจะได้รับแจ้งเตือนผ่าน LINE ทุกครั้งที่มีการบันทึกหนี้ใหม่หรือรับชำระ</span>
+  </div>
 </div>
-</body></html>`).setTitle("สมัครรับแจ้งเตือน LINE");
+</body>
+</html>`;
+
+  return HtmlService.createHtmlOutput(html).setTitle("สมัครรับแจ้งเตือน LINE").setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

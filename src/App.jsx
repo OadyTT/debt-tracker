@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 // ══ Config ══════════════════════════════════════
 const APP_VERSION = "v2.1";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxrCd34oeytvV3nogkJjJRVLWObLCUpWmE9yR9i2oHdFo-SYOqbU-T9tnzKrFA-5gcM/exec";
-const LINE_REGISTER_PAGE = GAS_URL + "?action=lineIdPage";
+const getLineRegisterPage = (oaId="") => GAS_URL + "?action=lineIdPage" + (oaId?"&oaId="+encodeURIComponent(oaId):"");
 const MAIN_ADMIN   = "thitiphankk@gmail.com";
 const CORRECT_PIN  = "4207";
 const DEFAULT_QR   = "0871407251"; // default PromptPay (debt collection)
@@ -827,26 +827,57 @@ export default function App(){
               <span style={{background:"#06c755",color:"#fff",borderRadius:6,padding:"2px 10px",fontSize:"0.8em",fontWeight:700}}>LINE</span>
               <span style={{fontWeight:700}}>แจ้งเตือนผ่าน LINE OA</span>
             </div>
-            <div style={{background:"#f0fdf4",borderRadius:10,padding:10,marginBottom:12,fontSize:"0.82em",color:"#15803d",lineHeight:1.6}}>
-              ✅ ใช้ <b>Winner Z9 i-App</b> (Messaging API) ในการแจ้งเตือน<br/>
-              ต้องใส่ Channel Access Token จาก LINE Developers Console
+            {/* LINE OA ID */}
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:"0.82em",color:"#6b7280",marginBottom:4}}>LINE OA ID (@username)</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={draft.lineOAId||""} onChange={e=>setDraft(s=>({...s,lineOAId:e.target.value}))}
+                  placeholder="@xxxxxxxxx"
+                  style={{flex:1,padding:"9px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",outline:"none"}}/>
+                {draft.lineOAId&&(
+                  <button onClick={()=>window.open("https://line.me/R/ti/p/"+draft.lineOAId,"_blank")}
+                    style={{padding:"9px 14px",background:"#06c755",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",flexShrink:0,whiteSpace:"nowrap"}}>
+                    ✅ ทดสอบ
+                  </button>
+                )}
+              </div>
             </div>
+
+            {/* Add Friend Button Preview */}
+            {draft.lineOAId&&(
+              <div style={{background:"#f0fdf4",borderRadius:12,padding:14,marginBottom:10,textAlign:"center",border:"1.5px solid #22c55e"}}>
+                <div style={{fontSize:"0.8em",color:"#15803d",marginBottom:8}}>ปุ่มนี้จะแสดงในหน้าสมัครรับแจ้งเตือน</div>
+                <a href={"https://line.me/R/ti/p/"+draft.lineOAId} target="_blank" rel="noreferrer"
+                  style={{display:"inline-flex",alignItems:"center",gap:10,background:"#06c755",color:"#fff",padding:"12px 24px",borderRadius:50,textDecoration:"none",fontWeight:700,fontSize:"1em",boxShadow:"0 4px 14px rgba(6,199,85,.4)"}}>
+                  <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/4/41/LINE_logo.svg/1200px-LINE_logo.svg.png" alt="LINE" width={22} height={22} style={{borderRadius:4}}/>
+                  เพิ่ม LINE OA เป็นเพื่อน
+                </a>
+              </div>
+            )}
+
+            {/* Channel Token */}
             <div style={{marginBottom:10}}>
               <div style={{fontSize:"0.82em",color:"#6b7280",marginBottom:4}}>Channel Access Token</div>
               <input value={draft.channelToken||""} onChange={e=>setDraft(s=>({...s,channelToken:e.target.value}))}
                 placeholder="วาง Long-lived Channel Access Token..."
                 style={{width:"100%",padding:"9px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em",boxSizing:"border-box",outline:"none"}}/>
             </div>
-            <button onClick={()=>window.open(LINE_REGISTER_PAGE,"_blank")}
-              style={{width:"100%",padding:"10px 0",background:"#06c755",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",marginBottom:8}}>
-              📱 หน้าสมัครรับแจ้งเตือน LINE (ส่งให้ผู้ช่วย)
-            </button>
+
+            {/* Send Registration Link */}
+            <div style={{display:"flex",gap:8,marginBottom:10}}>
+              <button onClick={()=>window.open(getLineRegisterPage(draft.lineOAId),"_blank")}
+                style={{flex:1,padding:"10px 0",background:"#06c755",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em"}}>
+                📤 หน้าสมัคร LINE (ส่งให้ผู้ช่วย)
+              </button>
+              <button onClick={()=>{const url=getLineRegisterPage(draft.lineOAId);navigator.clipboard?.writeText(url).then(()=>alert("Copy แล้ว!\n"+url)).catch(()=>alert("URL: "+url));}}
+                style={{padding:"10px 14px",background:"#eff6ff",border:"1.5px solid #3b82f6",borderRadius:10,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",color:"#3b82f6",flexShrink:0}}>
+                📋 Copy
+              </button>
+            </div>
+
             <div style={{fontSize:"0.8em",color:"#6b7280",background:"#eff6ff",borderRadius:8,padding:"8px 12px",lineHeight:1.6}}>
-              <b>วิธีตั้งค่า LINE OA:</b><br/>
-              1. ไปที่ developers.line.biz → Winner Z9 i-App<br/>
-              2. Messaging API → Channel access token → Issue<br/>
-              3. Webhook URL → วาง GAS URL นี้:<br/>
-              <code style={{fontSize:"0.85em",wordBreak:"break-all",color:"#1e40af"}}>{GAS_URL}</code>
+              <b>Webhook URL สำหรับ LINE Developers:</b><br/>
+              <code style={{fontSize:"0.85em",wordBreak:"break-all",color:"#1e40af",userSelect:"all"}}>{GAS_URL}</code>
             </div>
             {/* Pending helpers */}
             {pendingHelpers.filter(h=>h.status==="pending").length>0&&(

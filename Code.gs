@@ -441,22 +441,76 @@ function rejectHelper(d) {
 }
 
 // ════════════════════════════════════════════════
-//  supportPayment — บันทึกการสนับสนุน
+//  supportPayment — บันทึกการสนับสนุน + รับ Slip
 // ════════════════════════════════════════════════
+const SUPPORT_FOLDER_NAME = "สมุดหนี้-slips";
+
+function getSlipFolder() {
+  const f = DriveApp.getFoldersByName(SUPPORT_FOLDER_NAME);
+  return f.hasNext() ? f.next() : DriveApp.createFolder(SUPPORT_FOLDER_NAME);
+}
+
 function supportPayment(d) {
-  const ss=getSpreadsheet();
-  const sh=getOrCreate(ss,"สนับสนุน",["id","name","amount","date","status","note"]);
-  const id=Date.now();
-  sh.appendRow([id,d.name||"ไม่ระบุ",d.amount||DEFAULT_SUPPORT_AMT,new Date().toISOString(),"pending",d.note||""]);
-  // Notify admin
-  try{
-    MailApp.sendEmail({
-      to:MAIN_ADMIN,
-      subject:"☕ มีการสนับสนุน ฿"+d.amount,
-      body:"ชื่อ: "+d.name+"\nจำนวน: ฿"+d.amount+"\n\nกรุณาตรวจสอบใน Google Sheets แท็บ 'สนับสนุน'"
-    });
-  }catch(e){}
-  return { ok:true, id };
+  const ss  = getSpreadsheet();
+  const sh  = getOrCreate(ss,"สนับสนุน",["id","name","amount","date","status","slipUrl","note"]);
+  const id  = Date.now();
+  let slipUrl = "";
+  let slipBlob = null;
+
+  // ── บันทึก Slip ไป Drive ──
+  if(d.slip) {
+    try {
+      const raw      = d.slip.includes(",") ? d.slip.split(",")[1] : d.slip;
+      const fileName = "slip_"+id+".jpg";
+      const folder   = getSlipFolder();
+      const blob     = Utilities.newBlob(Utilities.base64Decode(raw), "image/jpeg", fileName);
+      const file     = folder.createFile(blob);
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      slipUrl = "https://drive.google.com/file/d/"+file.getId()+"/view";
+      slipBlob = blob; // เก็บไว้แนบ email
+    } catch(err) {
+      Logger.log("Slip upload error: "+err.message);
+    }
+  }
+
+  // ── บันทึกลง Sheets ──
+  sh.appendRow([id, d.name||"ไม่ระบุ", d.amount||DEFAULT_SUPPORT_AMT, new Date().toISOString(), "pending", slipUrl, d.note||""]);
+
+  // ── แจ้ง Admin ทาง Email (แนบ Slip ถ้ามี) ──
+  try {
+    const emailOpts = {
+      to:      MAIN_ADMIN,
+      subject: "☕ สนับสนุนค่ากาแฟ ฿"+d.amount+" — "+d.name,
+      htmlBody: `
+        <div style="font-family:sans-serif;max-width:480px;">
+          <div style="background:#1a3a2a;color:#fff;padding:16px;border-radius:12px 12px 0 0;">
+            <h2 style="margin:0;">☕ มีการสนับสนุนค่ากาแฟ!</h2>
+          </div>
+          <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:20px;">
+            <table style="width:100%;">
+              <tr><td style="color:#6b7280;">ชื่อ</td><td style="font-weight:700;text-align:right;">${d.name||"ไม่ระบุ"}</td></tr>
+              <tr><td style="color:#6b7280;">จำนวน</td><td style="font-weight:800;font-size:18px;text-align:right;color:#f59e0b;">฿${d.amount}</td></tr>
+              <tr><td style="color:#6b7280;">วันที่</td><td style="text-align:right;">${new Date().toLocaleString("th-TH")}</td></tr>
+              ${slipUrl?`<tr><td colspan="2" style="padding-top:12px;"><a href="${slipUrl}" style="background:#f59e0b;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-weight:700;">📎 ดู Slip การโอนเงิน</a></td></tr>`:""}
+            </table>
+            <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0;">
+            <p style="color:#6b7280;font-size:12px;">อนุมัติได้ใน Google Sheets → แท็บ "สนับสนุน" → เปลี่ยนสถานะเป็น "approved"</p>
+          </div>
+        </div>`,
+      body: "สนับสนุน: "+d.name+" ฿"+d.amount+(slipUrl?"\nSlip: "+slipUrl:""),
+    };
+
+    // แนบ Slip เป็น attachment ด้วย (ถ้ามี)
+    if(slipBlob) {
+      emailOpts.attachments = [slipBlob.setName("slip_"+d.name+"_฿"+d.amount+".jpg")];
+    }
+
+    MailApp.sendEmail(emailOpts);
+  } catch(e) {
+    Logger.log("Email error: "+e.message);
+  }
+
+  return { ok:true, id, slipUrl };
 }
 
 // ════════════════════════════════════════════════

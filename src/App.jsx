@@ -6,7 +6,8 @@ const GAS_URL = "https://script.google.com/macros/s/AKfycbxrCd34oeytvV3nogkJjJRV
 const LINE_REGISTER_PAGE = GAS_URL + "?action=lineIdPage";
 const MAIN_ADMIN   = "thitiphankk@gmail.com";
 const CORRECT_PIN  = "4207";
-const DEFAULT_QR   = "0871407251"; // default PromptPay
+const DEFAULT_QR   = "0871407251"; // default PromptPay (debt collection)
+const SUPPORT_QR   = "0655619464"; // PromptPay สนับสนุนค่ากาแฟ (แยกต่างหาก)
 
 const fl=document.createElement("link");
 fl.href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap";
@@ -420,51 +421,104 @@ function DueSummary({customers,transactions}){
 // ══ Support Page ══════════════════════════════════
 function SupportPage({settings,onClose}){
   const [name,setName]=useState("");
-  const [state,setState]=useState("idle");
+  const [slip,setSlip]=useState(null);       // base64 slip image
+  const [slipPreview,setSlipPreview]=useState(null);
+  const [state,setState]=useState("idle");   // idle|sending|done|error
+  const slipRef=useRef();
   const amount=settings?.supportAmount||399;
-  const ppId=settings?.supportPromptpay||settings?.promptpayId||DEFAULT_QR;
+  const ppId=settings?.supportPromptpay||SUPPORT_QR;
   const payload=genQR(ppId,amount);
   const imgUrl=qrUrl(payload);
+
+  const handleSlip=async e=>{
+    const f=e.target.files[0];
+    if(!f)return;
+    // compress slip for sending
+    const b64=await compressImage(f,800);
+    setSlip(b64);
+    setSlipPreview(b64);
+  };
+
+  const removeSlip=()=>{ setSlip(null); setSlipPreview(null); slipRef.current.value=""; };
 
   const submit=async()=>{
     if(!name.trim())return;
     setState("sending");
-    await gasPostRead({action:"supportPayment",name,amount});
-    setState("done");
+    try{
+      await gasPostRead({action:"supportPayment",name,amount,slip:slip||null});
+      setState("done");
+    }catch{
+      setState("error");
+      setTimeout(()=>setState("idle"),2500);
+    }
   };
+
+  const canSend=name.trim()&&slip;
+
   return(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:997,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:20,padding:24,width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,.3)",maxHeight:"90vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
-        <div style={{textAlign:"center",marginBottom:16}}>
-          <div style={{fontSize:40,marginBottom:8}}>☕</div>
+      <div style={{background:"#fff",borderRadius:20,padding:24,width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,.3)",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{textAlign:"center",marginBottom:14}}>
+          <div style={{fontSize:40,marginBottom:6}}>☕</div>
           <div style={{fontWeight:800,fontSize:"1.2em",color:"#1a3a2a"}}>สนับสนุนค่ากาแฟ</div>
           <div style={{color:"#6b7280",fontSize:"0.85em",marginTop:4}}>เพื่อพัฒนาระบบสมุดหนี้โชห่วยต่อไป</div>
         </div>
-        <div style={{textAlign:"center",marginBottom:16}}>
-          <div style={{fontWeight:800,fontSize:"2em",color:"#1a3a2a"}}>฿{fmt(amount)}</div>
+
+        {/* QR */}
+        <div style={{textAlign:"center",marginBottom:14}}>
+          <div style={{fontWeight:800,fontSize:"1.8em",color:"#1a3a2a"}}>฿{fmt(amount)}</div>
           {imgUrl&&(
-            <div style={{display:"inline-block",padding:10,background:"#fff",borderRadius:16,boxShadow:"0 4px 20px rgba(0,0,0,.12)",border:"3px solid #f59e0b",marginTop:10}}>
+            <div style={{display:"inline-block",padding:10,background:"#fff",borderRadius:16,boxShadow:"0 4px 20px rgba(0,0,0,.12)",border:"3px solid #f59e0b",marginTop:8}}>
               <img src={imgUrl} alt="QR" width={180} height={180} style={{display:"block",borderRadius:8}}/>
             </div>
           )}
           <div style={{fontSize:"0.8em",color:"#6b7280",marginTop:6}}>PromptPay: {ppId}</div>
         </div>
+
         {state==="done"?(
-          <div style={{background:"#f0fdf4",borderRadius:14,padding:16,textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:8}}>✅</div>
-            <div style={{fontWeight:700,color:"#15803d"}}>ขอบคุณมากครับ!</div>
-            <div style={{color:"#6b7280",fontSize:"0.85em"}}>Admin จะตรวจสอบและยืนยันการชำระภายใน 24 ชม.</div>
+          <div style={{background:"#f0fdf4",borderRadius:14,padding:16,textAlign:"center",marginBottom:12}}>
+            <div style={{fontSize:36,marginBottom:8}}>✅</div>
+            <div style={{fontWeight:700,color:"#15803d",fontSize:"1.05em"}}>ขอบคุณมากครับ!</div>
+            <div style={{color:"#6b7280",fontSize:"0.85em",marginTop:6}}>ส่ง slip ให้ Admin แล้ว<br/>Admin จะยืนยันภายใน 24 ชม.</div>
           </div>
         ):(
           <>
+            {/* Name */}
             <div style={{marginBottom:12}}>
-              <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>ชื่อ-สกุล (เพื่อยืนยัน)</div>
+              <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>ชื่อ-สกุล</div>
               <input value={name} onChange={e=>setName(e.target.value)} placeholder="ชื่อของคุณ"
                 style={{width:"100%",padding:"10px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none"}}/>
             </div>
-            <button onClick={submit} disabled={!name.trim()||state==="sending"}
-              style={{width:"100%",padding:"13px 0",background:name.trim()?"#f59e0b":"#e5e7eb",color:name.trim()?"#fff":"#9ca3af",border:"none",borderRadius:12,fontWeight:800,fontSize:"1em",cursor:name.trim()?"pointer":"default",fontFamily:"'Sarabun',sans-serif",marginBottom:10}}>
-              {state==="sending"?"⏳ กำลังส่ง...":"📤 แจ้งชำระเงินแล้ว"}
+
+            {/* Slip Upload */}
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>📎 แนบ Slip การโอนเงิน <span style={{color:"#ef4444"}}>*</span></div>
+              <input ref={slipRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleSlip}/>
+
+              {!slipPreview?(
+                <button onClick={()=>slipRef.current?.click()}
+                  style={{width:"100%",padding:"16px 0",background:"#fffbeb",border:"2px dashed #f59e0b",borderRadius:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,color:"#92400e",fontSize:"0.95em",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
+                  <span style={{fontSize:28}}>📷</span>
+                  <span>ถ่ายรูป หรือ เลือก Slip จากคลัง</span>
+                  <span style={{fontSize:"0.8em",color:"#b45309",fontWeight:400}}>รองรับ JPG, PNG</span>
+                </button>
+              ):(
+                <div style={{position:"relative"}}>
+                  <img src={slipPreview} alt="slip" style={{width:"100%",borderRadius:12,border:"2px solid #22c55e",maxHeight:240,objectFit:"contain",background:"#f9fafb"}}/>
+                  <button onClick={removeSlip}
+                    style={{position:"absolute",top:8,right:8,background:"rgba(239,68,68,.9)",border:"none",borderRadius:"50%",width:30,height:30,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                  <div style={{marginTop:6,fontSize:"0.8em",color:"#15803d",textAlign:"center"}}>✅ แนบ Slip แล้ว · <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>slipRef.current?.click()}>เปลี่ยน</span></div>
+                </div>
+              )}
+            </div>
+
+            {/* Submit */}
+            {!canSend&&<div style={{fontSize:"0.8em",color:"#f59e0b",textAlign:"center",marginBottom:8,background:"#fffbeb",borderRadius:8,padding:"6px 10px"}}>⚠️ กรุณาใส่ชื่อและแนบ Slip ก่อนส่ง</div>}
+            <button onClick={submit} disabled={!canSend||state==="sending"}
+              style={{width:"100%",padding:"13px 0",background:canSend?"#f59e0b":"#e5e7eb",color:canSend?"#fff":"#9ca3af",border:"none",borderRadius:12,fontWeight:800,fontSize:"1em",cursor:canSend?"pointer":"default",fontFamily:"'Sarabun',sans-serif",marginBottom:10,transition:"background .2s"}}>
+              {state==="sending"?"⏳ กำลังส่ง Slip...":state==="error"?"❌ ส่งไม่สำเร็จ ลองใหม่":"📤 ส่ง Slip ให้ Admin"}
             </button>
           </>
         )}

@@ -54,7 +54,8 @@ function doGet(e) {
     if (action === "getSettings")     return jsonResponse(getSettings());
     if (action === "getPending")      return jsonResponse(getPendingHelpers());
     if (action === "verifyVersion")   return jsonResponse(verifyVersion(e.parameter.code));
-    if (action === "getExpenses")     return jsonResponse(getExpenses(e.parameter));
+    if (action === "getExpenses")       return jsonResponse(getExpenses(e.parameter));
+    if (action === "getSupportPayments") return jsonResponse(getSupportPayments());
     if (action === "lineIdPage")      return lineIdPage(e);
     return jsonResponse({ ok:false, error:"unknown action" });
   } catch(err) { return jsonResponse({ ok:false, error:err.message }); }
@@ -91,7 +92,9 @@ function doPost(e) {
       case "backup":         return jsonResponse(backup());
       case "addExpense":     return jsonResponse(addExpense(d));
       case "getExpenses":    return jsonResponse(getExpenses(d));
-      case "supportPayment": return jsonResponse(supportPayment(d));
+      case "supportPayment":         return jsonResponse(supportPayment(d));
+      case "approveSupportPayment": return jsonResponse(approveSupportPayment(d));
+      case "rejectSupportPayment":  return jsonResponse(rejectSupportPayment(d));
     }
     return jsonResponse({ ok:false, error:"unknown action: "+d.action });
   } catch(err) { return jsonResponse({ ok:false, error:err.message }); }
@@ -337,6 +340,98 @@ function updateCustomerNote(d) {
     }
   }
   return getData();
+}
+
+// ════════════════════════════════════════════════
+//  getSupportPayments — ดึงรายการสนับสนุนทั้งหมด
+// ════════════════════════════════════════════════
+function getSupportPayments() {
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss,"สนับสนุน",["id","name","amount","date","status","slipUrl","note"]);
+  const rows = sheetToObjects(sh).map(r=>({
+    ...r, amount: Number(r.amount)||0,
+  }));
+  return { ok:true, payments: rows.reverse() }; // newest first
+}
+
+// ════════════════════════════════════════════════
+//  approveSupportPayment — อนุมัติ + ส่ง Full Version Code ทางอีเมล
+//  d: { paymentId, buyerName, buyerEmail (optional) }
+// ════════════════════════════════════════════════
+function approveSupportPayment(d) {
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss,"สนับสนุน",["id","name","amount","date","status","slipUrl","note"]);
+  const data = sh.getDataRange().getValues();
+  let buyerName = d.buyerName || "";
+  let amount    = 0;
+
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(d.paymentId)) {
+      sh.getRange(i+1, 5).setValue("approved");
+      if (!buyerName) buyerName = data[i][1] || "";
+      amount = Number(data[i][2]) || 0;
+      break;
+    }
+  }
+
+  // ── ส่ง Full Version Code ทางอีเมล ──
+  const recipientEmail = d.buyerEmail || MAIN_ADMIN;
+  const code = FULL_VERSION_CODE;
+
+  try {
+    MailApp.sendEmail({
+      to: recipientEmail,
+      bcc: MAIN_ADMIN,           // admin ได้สำเนาด้วย
+      subject: "🎉 Full Version Code — ระบบสมุดหนี้โชห่วย",
+      htmlBody: `<div style="font-family:sans-serif;max-width:480px;">
+        <div style="background:#1a3a2a;color:#fff;padding:18px 20px;border-radius:12px 12px 0 0;">
+          <h2 style="margin:0;font-size:18px;">🎉 ขอบคุณที่สนับสนุน!</h2>
+        </div>
+        <div style="background:#fff;border:1px solid #e5e7eb;border-top:none;border-radius:0 0 12px 12px;padding:22px;">
+          <p>สวัสดีคุณ <b>${buyerName}</b></p>
+          <p>ขอบคุณสำหรับการสนับสนุนระบบสมุดหนี้โชห่วย ฿${amount} 🙏</p>
+          <p>รหัส Full Version ของคุณ:</p>
+          <div style="background:#f0fdf4;border:2px solid #22c55e;border-radius:10px;padding:16px;text-align:center;margin:14px 0;">
+            <div style="font-size:10px;color:#15803d;margin-bottom:6px;">รหัส Full Version</div>
+            <div style="font-size:22px;font-weight:800;color:#1a3a2a;letter-spacing:2px;font-family:monospace;">${code}</div>
+          </div>
+          <div style="background:#eff6ff;border-radius:8px;padding:12px 14px;margin-top:14px;">
+            <b>วิธีเปิดใช้:</b>
+            <ol style="margin:8px 0 0;padding-left:18px;font-size:14px;color:#374151;">
+              <li>เปิดแอพสมุดหนี้โชห่วย</li>
+              <li>กด ⚙️ ตั้งค่า (รหัสผ่าน 4207)</li>
+              <li>เลื่อนลงที่ "รหัส Full Version"</li>
+              <li>วางรหัสแล้วกด ยืนยัน</li>
+            </ol>
+          </div>
+          <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0;">
+          <p style="color:#9ca3af;font-size:12px;margin:0;">ระบบสมุดหนี้โชห่วย · admin: ${MAIN_ADMIN}</p>
+        </div>
+      </div>`,
+      body: "รหัส Full Version: " + code + "\nขอบคุณคุณ " + buyerName + " ที่สนับสนุน ฿" + amount,
+    });
+  } catch(err) {
+    Logger.log("Email error: " + err.message);
+  }
+
+  return { ok:true, codeSent:true, to:recipientEmail };
+}
+
+// ════════════════════════════════════════════════
+//  rejectSupportPayment — ปฏิเสธ (slip ไม่ถูกต้อง ฯลฯ)
+// ════════════════════════════════════════════════
+function rejectSupportPayment(d) {
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss,"สนับสนุน",["id","name","amount","date","status","slipUrl","note"]);
+  const data = sh.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(d.paymentId)) {
+      sh.getRange(i+1, 5).setValue("rejected");
+      if (d.reason) sh.getRange(i+1, 7).setValue(d.reason);
+      break;
+    }
+  }
+  return { ok:true };
 }
 
 // ════════════════════════════════════════════════
@@ -1000,7 +1095,7 @@ function supportPayment(d) {
               ${slipUrl?`<tr><td colspan="2" style="padding-top:12px;"><a href="${slipUrl}" style="background:#f59e0b;color:#fff;padding:8px 16px;border-radius:8px;text-decoration:none;font-weight:700;">📎 ดู Slip การโอนเงิน</a></td></tr>`:""}
             </table>
             <hr style="border:none;border-top:1px solid #f3f4f6;margin:16px 0;">
-            <p style="color:#6b7280;font-size:12px;">อนุมัติได้ใน Google Sheets → แท็บ "สนับสนุน" → เปลี่ยนสถานะเป็น "approved"</p>
+            <p style="color:#6b7280;font-size:12px;">อนุมัติได้ใน ⚙️ Settings → อนุมัติผู้ซื้อ Full Version</p>
           </div>
         </div>`,
       body: "สนับสนุน: "+d.name+" ฿"+d.amount+(slipUrl?"\nSlip: "+slipUrl:""),

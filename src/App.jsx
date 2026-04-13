@@ -1270,6 +1270,31 @@ function CashOutView({onClose,showToast,settings}){
   );
 }
 
+// ══ Email Approve Form (inside settings) ══════════
+function EmailApproveForm({payment,isBusy,onApprove,onReject}){
+  const [email,setEmail]=useState("");
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+      <input value={email} onChange={e=>setEmail(e.target.value)}
+        type="email" placeholder="อีเมลผู้ซื้อ (เพื่อส่งรหัส)"
+        style={{width:"100%",padding:"8px 12px",border:"1.5px solid #fde68a",borderRadius:8,fontFamily:"'Sarabun',sans-serif",fontSize:"0.88em",boxSizing:"border-box",outline:"none",background:"rgba(255,255,255,.7)"}}/>
+      <div style={{display:"flex",gap:6}}>
+        <button onClick={()=>onApprove(email)} disabled={isBusy}
+          style={{flex:2,padding:"8px 0",background:isBusy?"#9ca3af":"#22c55e",color:"#fff",border:"none",borderRadius:8,fontWeight:700,cursor:isBusy?"default":"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em"}}>
+          {isBusy?"⏳ กำลังส่ง...":"✅ อนุมัติ + ส่งรหัส"}
+        </button>
+        <button onClick={onReject} disabled={isBusy}
+          style={{flex:1,padding:"8px 0",background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:8,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em"}}>
+          ✕ ปฏิเสธ
+        </button>
+      </div>
+      <div style={{fontSize:"0.72em",color:"#92400e"}}>
+        💡 ถ้าไม่ใส่อีเมล จะส่งหาตัวเองก่อน ({MAIN_ADMIN})
+      </div>
+    </div>
+  );
+}
+
 // ══ Help Modal ═══════════════════════════════════
 const HELP_SECTIONS = [
   {
@@ -1654,7 +1679,10 @@ export default function App(){
   const [calDayInfo,   setCalDayInfo]   = useState(null);
   const [listSort,     setListSort]     = useState("debtDesc"); // debtDesc|debtAsc|nameAsc|nameDesc|dueSoon
   const [showHistory,  setShowHistory]  = useState(false);     // toggle paid customers
-  const [backupState,  setBackupState]  = useState("idle");
+  const [backupState,    setBackupState]    = useState("idle");
+  const [supportPayments,setSupportPayments] = useState([]);
+  const [supportLoaded,  setSupportLoaded]   = useState(false);
+  const [approvingId,    setApprovingId]     = useState(null); // id being processed
   // new customer form
   const [newCustName,  setNewCustName]  = useState("");
   const [newCustPhoto, setNewCustPhoto] = useState(null);
@@ -1780,6 +1808,34 @@ export default function App(){
     await gasPostRead({action:"saveSettings",settings:draft});
     setSettings(draft);
     showToast("บันทึกตั้งค่าแล้ว");
+  };
+
+  const loadSupportPayments=async()=>{
+    try{
+      const res=await fetch(GAS_URL+"?action=getSupportPayments");
+      const d=await res.json();
+      if(d.ok){ setSupportPayments(d.payments||[]); setSupportLoaded(true); }
+    }catch{}
+  };
+
+  const doApproveSupportPayment=async(payment,buyerEmail)=>{
+    setApprovingId(payment.id);
+    try{
+      const res=await gasPostRead({action:"approveSupportPayment",paymentId:payment.id,buyerName:payment.name,buyerEmail:buyerEmail||""});
+      if(res.ok){
+        setSupportPayments(p=>p.map(x=>x.id===payment.id?{...x,status:"approved"}:x));
+        showToast(`✅ อนุมัติแล้ว! ส่งรหัสไปที่ ${buyerEmail||MAIN_ADMIN}`,"🎉",4000);
+      }
+    }catch{ showToast("เกิดข้อผิดพลาด","❌"); }
+    setApprovingId(null);
+  };
+
+  const doRejectSupportPayment=async(id)=>{
+    setApprovingId(id);
+    await gasPostRead({action:"rejectSupportPayment",paymentId:id});
+    setSupportPayments(p=>p.map(x=>x.id===id?{...x,status:"rejected"}:x));
+    setApprovingId(null);
+    showToast("ปฏิเสธแล้ว","✕");
   };
 
   const doBackup=async()=>{
@@ -2067,6 +2123,67 @@ export default function App(){
                   placeholder="เบอร์" style={{width:"100%",padding:"9px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",boxSizing:"border-box",outline:"none"}}/>
               </div>
             </div>
+          </div>
+
+          {/* ── Full Version Purchases ── */}
+          <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 2px 10px rgba(0,0,0,.06)"}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+              <div style={{fontWeight:700,fontSize:"1em",display:"flex",alignItems:"center",gap:6}}>
+                <span>💳</span><span>ผู้ซื้อ Full Version</span>
+                {supportPayments.filter(p=>p.status==="pending").length>0&&(
+                  <span style={{background:"#ef4444",color:"#fff",borderRadius:"50%",width:18,height:18,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:"0.7em",fontWeight:700}}>
+                    {supportPayments.filter(p=>p.status==="pending").length}
+                  </span>
+                )}
+              </div>
+              <button onClick={loadSupportPayments}
+                style={{padding:"5px 12px",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:8,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.8em",fontWeight:600,color:"#2563eb"}}>
+                🔄 โหลด
+              </button>
+            </div>
+
+            {!supportLoaded&&(
+              <div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:"0.88em"}}>
+                กด <b>🔄 โหลด</b> เพื่อดูรายการทั้งหมด
+              </div>
+            )}
+            {supportLoaded&&supportPayments.length===0&&(
+              <div style={{textAlign:"center",padding:"16px 0",color:"#9ca3af",fontSize:"0.88em"}}>📭 ยังไม่มีรายการ</div>
+            )}
+
+            {supportLoaded&&supportPayments.map(p=>{
+              const isPending  = p.status==="pending";
+              const isApproved = p.status==="approved";
+              const isBusy     = approvingId===p.id;
+              return(
+                <div key={p.id} style={{borderRadius:12,border:`1.5px solid ${isPending?"#fde68a":isApproved?"#86efac":"#fca5a5"}`,background:isPending?"#fffbeb":isApproved?"#f0fdf4":"#fef2f2",padding:14,marginBottom:10}}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                    <div style={{width:36,height:36,borderRadius:"50%",background:isPending?"#f59e0b":isApproved?"#22c55e":"#ef4444",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:15,flexShrink:0}}>
+                      {isPending?"⏳":isApproved?"✅":"✕"}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:"0.95em",color:"#1a3a2a"}}>{p.name||"ไม่ระบุชื่อ"}</div>
+                      <div style={{fontSize:"0.78em",color:"#6b7280",display:"flex",gap:6,flexWrap:"wrap",marginTop:1}}>
+                        <span style={{fontWeight:700,color:"#f59e0b"}}>฿{fmt(p.amount)}</span>
+                        <span>·</span>
+                        <span>{p.date?new Date(p.date).toLocaleDateString("th-TH",{day:"numeric",month:"short"}):"-"}</span>
+                        <span>·</span>
+                        <span style={{fontWeight:600,color:isPending?"#f59e0b":isApproved?"#15803d":"#ef4444"}}>{isPending?"รอตรวจสอบ":isApproved?"อนุมัติแล้ว ✓":"ปฏิเสธ"}</span>
+                      </div>
+                    </div>
+                    {/* Slip link */}
+                    {p.slipUrl&&(
+                      <a href={p.slipUrl} target="_blank" rel="noreferrer"
+                        style={{flexShrink:0,padding:"5px 10px",background:"rgba(255,255,255,.7)",border:"1px solid #e5e7eb",borderRadius:8,textDecoration:"none",color:"#374151",fontSize:"0.78em",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                        📎 Slip
+                      </a>
+                    )}
+                  </div>
+                  {isPending&&<EmailApproveForm payment={p} isBusy={isBusy} onApprove={(email)=>doApproveSupportPayment(p,email)} onReject={()=>doRejectSupportPayment(p.id)}/>}
+                  {isApproved&&<div style={{fontSize:"0.75em",color:"#15803d"}}>✉️ ส่งรหัส Full Version ทางอีเมลแล้ว</div>}
+                </div>
+              );
+            })}
           </div>
 
           {/* Backup */}

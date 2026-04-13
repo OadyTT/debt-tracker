@@ -1026,43 +1026,58 @@ function ReportView({customers,transactions,onClose,settings}){
 
 // ══ CashOut View — โหมดรถส่งของ ══════════════════
 function CashOutView({onClose,showToast,settings}){
-  const [step,  setStep]  = useState("form"); // form|confirm|done
-  const [supplier,setSupplier]=useState("");
-  const [items, setItems] = useState([{name:"",price:""}]);
-  const [note,  setNote]  = useState("");
-  const [hist,  setHist]  = useState(null);   // {expenses,todayTotal,monthTotal}
-  const [tab,   setTab]   = useState("new");  // new|history
-  const [saving,setSaving]= useState(false);
+  const [step,    setStep]    = useState("form");
+  const [supplier,setSupplier]= useState("");
+  const [items,   setItems]   = useState([{name:"",price:""}]);
+  const [note,    setNote]    = useState("");
+  const [hist,    setHist]    = useState(null);
+  const [histLoading,setHistLoading]=useState(false);
+  const [histLoaded, setHistLoaded] = useState(false);  // cache: don't refetch every tab switch
+  const [tab,     setTab]     = useState("new");
+  const [saving,  setSaving]  = useState(false);
   const [dateFilter,setDateFilter]=useState(new Date().toISOString().slice(0,7));
 
-  const total = items.reduce((s,it)=>s+(parseFloat(it.price)||0),0);
-  const addItem = ()=>setItems(p=>[...p,{name:"",price:""}]);
+  const total    = items.reduce((s,it)=>s+(parseFloat(it.price)||0),0);
+  const addItem  = ()=>setItems(p=>[...p,{name:"",price:""}]);
   const removeItem=i=>setItems(p=>p.filter((_,idx)=>idx!==i));
-  const updItem=(i,f,v)=>setItems(p=>{const a=[...p];a[i]={...a[i],[f]:v};return a;});
+  const updItem  =(i,f,v)=>setItems(p=>{const a=[...p];a[i]={...a[i],[f]:v};return a;});
 
-  const loadHistory=async(month)=>{
+  // ── Load history ONLY on demand (not on mount, not on tab switch) ──
+  const loadHistory=async(month,force=false)=>{
+    if(histLoading) return;
+    if(histLoaded&&!force&&month===dateFilter) return; // use cache
+    setHistLoading(true);
     try{
       const res=await fetch(`${GAS_URL}?action=getExpenses&month=${month||dateFilter}`);
       const d=await res.json();
-      if(d.ok) setHist(d);
+      if(d.ok){ setHist(d); setHistLoaded(true); }
     }catch{}
+    setHistLoading(false);
   };
 
-  useEffect(()=>{ if(tab==="history") loadHistory(dateFilter); },[tab,dateFilter]);
+  // ── Tab switch: go to history + load if not yet loaded ──
+  const goHistory=()=>{
+    setTab("history");
+    loadHistory(dateFilter);      // no-op if cache hit
+  };
+
+  const changeMonth=(newMonth)=>{
+    setDateFilter(newMonth);
+    setHistLoaded(false);          // force reload for new month
+    loadHistory(newMonth,true);
+  };
 
   const submit=async()=>{
     setSaving(true);
     const expItems=items.filter(it=>it.name||it.price).map(it=>({name:it.name||"รายการ",price:parseFloat(it.price)||0}));
     const today=new Date().toISOString().slice(0,10);
-    try{
-      fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"addExpense",supplier,items:expItems,total,date:today,note})}).catch(()=>{});
-      setTimeout(()=>{
-        setSaving(false);
-        setStep("done");
-        if(tab==="history") loadHistory(dateFilter);
-      },600);
-    }catch{ setSaving(false); }
+    fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"addExpense",supplier,items:expItems,total,date:today,note})}).catch(()=>{});
+    setTimeout(()=>{
+      setSaving(false);
+      setStep("done");
+      setHistLoaded(false);        // invalidate cache after new expense
+    },500);
   };
 
   const reset=()=>{ setSupplier(""); setItems([{name:"",price:""}]); setNote(""); setStep("form"); };
@@ -1080,7 +1095,7 @@ function CashOutView({onClose,showToast,settings}){
         {/* Tabs */}
         <div style={{display:"flex",gap:0}}>
           {[["new","➕ บันทึกใหม่"],["history","📋 ประวัติจ่าย"]].map(([t,l])=>(
-            <button key={t} onClick={()=>setTab(t)}
+            <button key={t} onClick={()=>t==="history"?goHistory():setTab("new")}
               style={{flex:1,padding:"10px 0",border:"none",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",
                 background:tab===t?"#fff":"transparent",
                 color:tab===t?"#1e3a5f":"rgba(255,255,255,.7)",
@@ -1102,7 +1117,7 @@ function CashOutView({onClose,showToast,settings}){
               <div style={{fontWeight:800,fontSize:"1.8em",color:"#1e3a5f",marginBottom:24}}>฿{fmt(total)}</div>
               <div style={{display:"flex",gap:10,justifyContent:"center"}}>
                 <button onClick={reset} style={{padding:"12px 24px",background:"#2563eb",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>+ บันทึกอีกครั้ง</button>
-                <button onClick={()=>{setTab("history");loadHistory(dateFilter);}} style={{padding:"12px 24px",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>📋 ดูประวัติ</button>
+                <button onClick={()=>goHistory()} style={{padding:"12px 24px",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>📋 ดูประวัติ</button>
               </div>
             </div>
           ):step==="confirm"?(
@@ -1189,11 +1204,13 @@ function CashOutView({onClose,showToast,settings}){
         <div style={{flex:1,overflowY:"auto",padding:16}}>
           {/* Month picker */}
           <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m)-2,1);setDateFilter(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);loadHistory(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>←</button>
+            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m)-2,1);const nm=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;changeMonth(nm);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>←</button>
             <div style={{flex:1,textAlign:"center",fontWeight:700,color:"#1e3a5f"}}>
               {dateFilter&&`${thMonths[parseInt(dateFilter.split("-")[1])-1]} ${parseInt(dateFilter.split("-")[0])+543}`}
             </div>
-            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m),1);setDateFilter(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);loadHistory(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>→</button>
+            <button onClick={()=>loadHistory(dateFilter,true)} disabled={histLoading}
+              style={{background:"none",border:"none",cursor:"pointer",fontSize:18,opacity:histLoading?.4:1,flexShrink:0}}>🔄</button>
+            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m),1);const nm=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;changeMonth(nm);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>→</button>
           </div>
 
           {/* Summary */}
@@ -1210,8 +1227,21 @@ function CashOutView({onClose,showToast,settings}){
             </div>
           )}
 
-          {!hist&&<div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>⏳ กำลังโหลด...</div>}
-          {hist&&hist.expenses.length===0&&<div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>ไม่มีรายจ่ายเดือนนี้</div>}
+          {histLoading&&<div style={{textAlign:"center",padding:32,color:"#9ca3af",display:"flex",flexDirection:"column",alignItems:"center",gap:10}}>
+              <div style={{width:32,height:32,border:"3px solid #e5e7eb",borderTop:"3px solid #2563eb",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+              <div style={{fontSize:"0.9em"}}>กำลังโหลด...</div>
+            </div>}
+          {!histLoading&&!histLoaded&&<div style={{textAlign:"center",padding:32,color:"#9ca3af",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+              <div style={{fontSize:32}}>📋</div>
+              <div>ยังไม่มีข้อมูล</div>
+              <button onClick={()=>loadHistory(dateFilter,true)} style={{padding:"8px 20px",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:10,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,color:"#2563eb",fontSize:"0.9em"}}>🔄 โหลดประวัติ</button>
+            </div>}
+          {!histLoading&&histLoaded&&hist&&hist.expenses.length===0&&(
+            <div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>
+              <div style={{fontSize:28,marginBottom:8}}>📭</div>
+              <div>ไม่มีรายจ่ายเดือนนี้</div>
+            </div>
+          )}
 
           {hist&&hist.expenses.map(e=>(
             <div key={e.id} style={{background:"#fff",borderRadius:14,padding:14,marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,.06)",borderLeft:"4px solid #bfdbfe"}}>

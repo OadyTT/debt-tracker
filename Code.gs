@@ -54,6 +54,7 @@ function doGet(e) {
     if (action === "getSettings")     return jsonResponse(getSettings());
     if (action === "getPending")      return jsonResponse(getPendingHelpers());
     if (action === "verifyVersion")   return jsonResponse(verifyVersion(e.parameter.code));
+    if (action === "getExpenses")     return jsonResponse(getExpenses(e.parameter));
     if (action === "lineIdPage")      return lineIdPage(e);
     return jsonResponse({ ok:false, error:"unknown action" });
   } catch(err) { return jsonResponse({ ok:false, error:err.message }); }
@@ -82,9 +83,13 @@ function doPost(e) {
       case "saveSettings":   return jsonResponse(saveSettings(d));
       case "notifyEmail":    return jsonResponse(notifyEmail(d));
       case "notifyLine":     return jsonResponse(notifyLine(d));
+      case "updateCustomerNote": return jsonResponse(updateCustomerNote(d));
+      case "updateCustomerPhone": return jsonResponse(updateCustomerPhone(d));
       case "approveHelper":  return jsonResponse(approveHelper(d));
       case "rejectHelper":   return jsonResponse(rejectHelper(d));
       case "backup":         return jsonResponse(backup());
+      case "addExpense":     return jsonResponse(addExpense(d));
+      case "getExpenses":    return jsonResponse(getExpenses(d));
       case "supportPayment": return jsonResponse(supportPayment(d));
     }
     return jsonResponse({ ok:false, error:"unknown action: "+d.action });
@@ -96,11 +101,11 @@ function doPost(e) {
 // ════════════════════════════════════════════════
 function getData() {
   const ss  = getSpreadsheet();
-  const cSh = getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl"]);
+  const cSh = getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh = getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
   const customers = sheetToObjects(cSh).map(c=>({
     ...c, id:Number(c.id), totalDebt:Number(c.totalDebt)||0,
-    dueDate:c.dueDate||null, photo:c.photoUrl||null
+    dueDate:c.dueDate||null, photo:c.photoUrl||null, note:c.note||""
   }));
   const transactions = sheetToObjects(tSh).map(t=>({
     ...t, id:Number(t.id), customerId:Number(t.customerId),
@@ -188,9 +193,9 @@ function verifyVersion(code) {
 // ════════════════════════════════════════════════
 function addCustomer(d) {
   const ss=getSpreadsheet();
-  const sh=getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl"]);
+  const sh=getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const id=d.txId||Date.now();
-  sh.appendRow([id,d.name,d.phone||"",0,"",""]);
+  sh.appendRow([id,d.name,d.phone||"",0,"","",""]);
   return { ok:true, newId:id, ...getData() };
 }
 
@@ -199,7 +204,7 @@ function addCustomer(d) {
 // ════════════════════════════════════════════════
 function addDebt(d) {
   const ss =getSpreadsheet();
-  const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl"]);
+  const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh=getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
   tSh.appendRow([d.txId||Date.now(),d.customerId,d.date,JSON.stringify(d.items),d.total,false,d.interestRate||0,d.dueDate||""]);
   const cData=cSh.getDataRange().getValues();
@@ -245,7 +250,7 @@ function updateDebt(d) {
 // ════════════════════════════════════════════════
 function markPaid(d) {
   const ss =getSpreadsheet();
-  const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl"]);
+  const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh=getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
   const cData=cSh.getDataRange().getValues();
   for(let i=1;i<cData.length;i++){
@@ -281,7 +286,7 @@ function savePhoto(d) {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK,DriveApp.Permission.VIEW);
     const url="https://drive.google.com/thumbnail?id="+file.getId()+"&sz=w300";
     const ss=getSpreadsheet();
-    const cSh=getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl"]);
+    const cSh=getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
     const cData=cSh.getDataRange().getValues();
     const headers=cData[0];
     let col=headers.indexOf("photoUrl");
@@ -291,6 +296,101 @@ function savePhoto(d) {
     }
     return { ok:true, photoUrl:url };
   } catch(err){ return { ok:false, error:err.message }; }
+}
+
+// ════════════════════════════════════════════════
+//  updateCustomerPhone — อัปเดตเบอร์โทรลูกค้า
+//  d: { customerId, phone }
+// ════════════════════════════════════════════════
+function updateCustomerPhone(d) {
+  const ss   = getSpreadsheet();
+  const cSh  = getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
+  const data = cSh.getDataRange().getValues();
+  for (let i=1; i<data.length; i++) {
+    if (Number(data[i][0]) === Number(d.customerId)) {
+      cSh.getRange(i+1, 3).setValue(d.phone||"");
+      break;
+    }
+  }
+  return getData();
+}
+
+// ════════════════════════════════════════════════
+//  updateCustomerNote — บันทึก Note ลูกค้า
+//  d: { customerId, note }
+// ════════════════════════════════════════════════
+function updateCustomerNote(d) {
+  const ss   = getSpreadsheet();
+  const cSh  = getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
+  const data = cSh.getDataRange().getValues();
+  const headers = data[0];
+  let noteCol = headers.indexOf("note");
+  if (noteCol === -1) {
+    noteCol = headers.length;
+    cSh.getRange(1, noteCol+1).setValue("note");
+  }
+  for (let i=1; i<data.length; i++) {
+    if (Number(data[i][0]) === Number(d.customerId)) {
+      cSh.getRange(i+1, noteCol+1).setValue(d.note||"");
+      break;
+    }
+  }
+  return getData();
+}
+
+// ════════════════════════════════════════════════
+//  EXPENSE (รายจ่าย) — โหมดรถส่งของ
+// ════════════════════════════════════════════════
+
+// addExpense — บันทึกการจ่ายเงินสด
+// d: { supplier, items:[{name,price}], total, date, note }
+function addExpense(d) {
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss,"รายจ่าย",[
+    "id","date","supplier","items","total","note","createdAt"
+  ]);
+  const id = Date.now();
+  sh.appendRow([
+    id,
+    d.date || Utilities.formatDate(new Date(),"Asia/Bangkok","yyyy-MM-dd"),
+    d.supplier || "ไม่ระบุ",
+    JSON.stringify(d.items || []),
+    Number(d.total) || 0,
+    d.note || "",
+    new Date().toISOString(),
+  ]);
+  return { ok:true, id, ...getExpenses({}) };
+}
+
+// getExpenses — ดึงรายจ่าย (filter by month/date optional)
+function getExpenses(params) {
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss,"รายจ่าย",[
+    "id","date","supplier","items","total","note","createdAt"
+  ]);
+  const raw = sheetToObjects(sh).map(e=>({
+    ...e,
+    id:    Number(e.id),
+    total: Number(e.total)||0,
+    items: typeof e.items==="string"?JSON.parse(e.items||"[]"):(e.items||[]),
+  }));
+
+  // filter
+  const month = params && params.month; // "2026-04"
+  const date  = params && params.date;  // "2026-04-13"
+  let filtered = raw;
+  if(date)  filtered = raw.filter(e=>e.date===date);
+  else if(month) filtered = raw.filter(e=>String(e.date||"").startsWith(month));
+
+  filtered.sort((a,b)=>b.id-a.id);
+
+  // summary
+  const today      = Utilities.formatDate(new Date(),"Asia/Bangkok","yyyy-MM-dd");
+  const thisMonth  = today.slice(0,7);
+  const todayTotal = raw.filter(e=>e.date===today).reduce((s,e)=>s+e.total,0);
+  const monthTotal = raw.filter(e=>String(e.date||"").startsWith(thisMonth)).reduce((s,e)=>s+e.total,0);
+
+  return { ok:true, expenses:filtered, todayTotal, monthTotal };
 }
 
 // ════════════════════════════════════════════════
@@ -343,22 +443,52 @@ function sendLineMessage(uid, message) {
   }catch(err){ return { ok:false, error:err.message }; }
 }
 
+// ── Drive photo URL → LINE-accessible URL ──────
+// LINE Messaging API requires a publicly accessible HTTPS image URL.
+// Google Drive thumbnail URLs work for this purpose.
+function toLineImageUrl(driveUrl) {
+  if (!driveUrl) return null;
+  // Convert drive.google.com/thumbnail?id=XXX to direct URL
+  if (driveUrl.includes("drive.google.com/thumbnail")) return driveUrl;
+  // Convert drive.google.com/file/d/ID/view to thumbnail
+  const m = driveUrl.match(/\/d\/([a-zA-Z0-9_-]+)\//);
+  if (m) return "https://drive.google.com/thumbnail?id=" + m[1] + "&sz=w400";
+  return null;
+}
+
+function buildLineMessages(text, photoUrl) {
+  const messages = [];
+  // Photo first (more eye-catching)
+  const imgUrl = toLineImageUrl(photoUrl);
+  if (imgUrl) {
+    messages.push({
+      type: "image",
+      originalContentUrl: imgUrl,
+      previewImageUrl:    imgUrl,
+    });
+  }
+  // Text message
+  messages.push({ type: "text", text });
+  return messages;
+}
+
 function notifyLine(d) {
-  const token=d.channelToken||getChannelToken();
-  if(!token) return { ok:false, reason:"no channel token" };
-  const uids=d.uids||[];
-  const results=uids.map(uid=>{
-    try{
-      const res=UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push",{
-        method:"post",
-        headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
-        payload:JSON.stringify({to:uid,messages:[{type:"text",text:d.message}]}),
-        muteHttpExceptions:true
+  const token = d.channelToken || getChannelToken();
+  if (!token) return { ok:false, reason:"no channel token" };
+  const uids     = d.uids || [];
+  const messages = buildLineMessages(d.message, d.photoUrl || null);
+  const results  = uids.map(uid => {
+    try {
+      const res = UrlFetchApp.fetch("https://api.line.me/v2/bot/message/push", {
+        method: "post",
+        headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+        payload: JSON.stringify({ to: uid, messages }),
+        muteHttpExceptions: true,
       });
-      return { uid, ok:res.getResponseCode()===200 };
-    }catch(e){ return { uid, ok:false }; }
+      return { uid, ok: res.getResponseCode() === 200, code: res.getResponseCode() };
+    } catch(e) { return { uid, ok: false, error: e.message }; }
   });
-  return { ok:true, results };
+  return { ok: true, results };
 }
 
 // ════════════════════════════════════════════════
@@ -367,15 +497,16 @@ function notifyLine(d) {
 // ════════════════════════════════════════════════
 //  LINE Reply helper
 // ════════════════════════════════════════════════
-function replyLine(replyToken, message) {
+function replyLine(replyToken, message, photoUrl) {
   const token = getChannelToken();
   if (!token || !replyToken) return;
   try {
+    const messages = buildLineMessages(message, photoUrl || null);
     UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
       method: "post",
       headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
-      payload: JSON.stringify({ replyToken, messages: [{ type: "text", text: message }] }),
-      muteHttpExceptions: true
+      payload: JSON.stringify({ replyToken, messages }),
+      muteHttpExceptions: true,
     });
   } catch(e) { Logger.log("replyLine error: " + e.message); }
 }

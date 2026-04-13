@@ -273,6 +273,101 @@ function PhotoUploadBtn({customerId,onUploaded}){
   );
 }
 
+// ══ Phone Edit ════════════════════════════════════
+function PhoneEdit({phone,onSave}){
+  const [editing, setEditing] = useState(false);
+  const [val,     setVal]     = useState(phone||"");
+  const inputRef = useRef();
+
+  useEffect(()=>{ setVal(phone||""); },[phone]);
+  useEffect(()=>{ if(editing&&inputRef.current) inputRef.current.focus(); },[editing]);
+
+  const save=()=>{ onSave(val.trim()); setEditing(false); };
+  const cancel=()=>{ setVal(phone||""); setEditing(false); };
+
+  if(editing) return(
+    <div style={{display:"flex",gap:6,alignItems:"center",marginTop:4}}>
+      <input ref={inputRef} value={val} onChange={e=>setVal(e.target.value)}
+        onKeyDown={e=>{if(e.key==="Enter")save();if(e.key==="Escape")cancel();}}
+        type="tel" inputMode="tel" placeholder="0812345678"
+        style={{flex:1,padding:"5px 10px",borderRadius:8,border:"1.5px solid rgba(255,255,255,.6)",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",outline:"none",width:0}}/>
+      <button onClick={save} style={{background:"#22c55e",border:"none",borderRadius:8,padding:"5px 10px",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:"0.82em",flexShrink:0}}>✓</button>
+      <button onClick={cancel} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"5px 10px",color:"#fff",cursor:"pointer",fontSize:"0.82em",flexShrink:0}}>✕</button>
+    </div>
+  );
+
+  return(
+    <div onClick={()=>setEditing(true)} style={{opacity:.85,fontSize:"0.9em",cursor:"pointer",display:"flex",alignItems:"center",gap:6,marginTop:2}}>
+      <span>📞</span>
+      <span style={{textDecoration:phone?"none":"underline dotted",opacity:phone?1:.7}}>
+        {phone||"แตะเพื่อเพิ่มเบอร์โทร"}
+      </span>
+      <span style={{fontSize:"0.75em",opacity:.5}}>✏️</span>
+    </div>
+  );
+}
+
+// ══ Note Section ══════════════════════════════════
+function NoteSection({c,onSave}){
+  const [editing,  setEditing]  = useState(false);
+  const [noteVal,  setNoteVal]  = useState(c.note||"");
+  const [saving,   setSaving]   = useState(false);
+  const taRef = useRef();
+
+  useEffect(()=>{ if(editing&&taRef.current) taRef.current.focus(); },[editing]);
+
+  const save=async()=>{
+    setSaving(true);
+    await onSave(noteVal);
+    setSaving(false);
+    setEditing(false);
+  };
+
+  const cancel=()=>{ setNoteVal(c.note||""); setEditing(false); };
+
+  return(
+    <div style={{background:"#fff",borderRadius:14,padding:14,marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontWeight:700,color:"#1a3a2a",display:"flex",alignItems:"center",gap:6}}>
+          <span>📝</span><span>Note</span>
+        </div>
+        {!editing&&(
+          <button onClick={()=>setEditing(true)}
+            style={{background:"#eff6ff",border:"1.5px solid #3b82f6",borderRadius:8,padding:"4px 12px",cursor:"pointer",color:"#3b82f6",fontWeight:600,fontSize:"0.82em",fontFamily:"'Sarabun',sans-serif"}}>
+            ✏️ {c.note?"แก้ไข":"เพิ่ม Note"}
+          </button>
+        )}
+      </div>
+
+      {editing?(
+        <>
+          <textarea ref={taRef} value={noteVal} onChange={e=>setNoteVal(e.target.value)}
+            placeholder="เพิ่ม Note เช่น บ้านใกล้วัด, จ่ายทุกสิ้นเดือน, ห้ามลืมทวง..."
+            rows={4}
+            style={{width:"100%",padding:"10px 12px",border:"1.5px solid #3b82f6",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",boxSizing:"border-box",outline:"none",resize:"vertical",lineHeight:1.6}}/>
+          <div style={{display:"flex",gap:8,marginTop:8}}>
+            <button onClick={cancel} style={{flex:1,padding:"9px 0",background:"#f3f4f6",border:"none",borderRadius:10,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",color:"#374151",fontSize:"0.9em"}}>ยกเลิก</button>
+            <button onClick={save} disabled={saving}
+              style={{flex:2,padding:"9px 0",background:saving?"#9ca3af":"#1a7a4a",color:"#fff",border:"none",borderRadius:10,fontWeight:700,cursor:saving?"default":"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em"}}>
+              {saving?"⏳ กำลังบันทึก...":"💾 บันทึก Note"}
+            </button>
+          </div>
+        </>
+      ):(
+        c.note?(
+          <div style={{background:"#fffbeb",borderRadius:10,padding:"10px 14px",color:"#374151",fontSize:"0.9em",lineHeight:1.7,border:"1px solid #fde68a",whiteSpace:"pre-wrap"}}>
+            {c.note}
+          </div>
+        ):(
+          <div onClick={()=>setEditing(true)} style={{background:"#f9fafb",borderRadius:10,padding:"12px 14px",color:"#9ca3af",fontSize:"0.88em",textAlign:"center",cursor:"pointer",border:"1.5px dashed #e5e7eb"}}>
+            + แตะเพื่อเพิ่ม Note ของลูกค้าคนนี้
+          </div>
+        )
+      )}
+    </div>
+  );
+}
+
 // ══ QR Modal ═════════════════════════════════════
 function QRModal({c,settings,onPaid,onClose}){
   const ppId=settings?.promptpayId||DEFAULT_QR;
@@ -288,7 +383,8 @@ function QRModal({c,settings,onPaid,onClose}){
     const emailData=buildPaidEmail(c,a);
     gasNotify({...emailData,extraEmails:settings?.adminEmails||[]});
     if(settings?.channelToken&&(settings?.adminLineUids||[]).length>0){
-      gasNotifyLine({channelToken:settings.channelToken,uids:settings.adminLineUids,message:`💰 รับชำระแล้ว\nลูกค้า: ${c.name}\nจำนวน: ฿${fmt(a)}`});
+      gasNotifyLine({channelToken:settings.channelToken,uids:settings.adminLineUids,
+          message:linePaidMsg(c,a),photoUrl:c.photo||null});
     }
     await onPaid(a);
     setState("done");
@@ -514,35 +610,822 @@ function DueSummary({customers,transactions}){
   );
 }
 
+// ══ Report System ══════════════════════════════════
+// A4 at 96dpi = 794 × 1123px
+
+function loadHtml2Canvas(){
+  return new Promise((resolve,reject)=>{
+    if(window.html2canvas){resolve(window.html2canvas);return;}
+    const s=document.createElement("script");
+    s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    s.onload=()=>resolve(window.html2canvas);
+    s.onerror=reject;
+    document.head.appendChild(s);
+  });
+}
+
+const REPORT_TYPES=[
+  {id:"debtors",  label:"📋 รายชื่อลูกหนี้",  icon:"👥"},
+  {id:"overdue",  label:"🔴 ค้างเกินกำหนด",  icon:"⚠️"},
+  {id:"expenses", label:"🚛 รายจ่ายซื้อสด",   icon:"💸"},
+  {id:"summary",  label:"📊 สรุปภาพรวม",      icon:"📈"},
+];
+
+function ReportView({customers,transactions,onClose,settings}){
+  const [type,    setType]    = useState("debtors");
+  const [month,   setMonth]   = useState(new Date().toISOString().slice(0,7));
+  const [expenses,setExpenses]= useState([]);
+  const [saving,  setSaving]  = useState(false);
+  const [msg,     setMsg]     = useState("");
+  const reportRef = useRef();
+
+  const thMonths=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+  const [my,mm]=month.split("-");
+  const monthLabel=`${thMonths[parseInt(mm)-1]} ${parseInt(my)+543}`;
+  const today=new Date().toLocaleDateString("th-TH",{day:"numeric",month:"long",year:"numeric"});
+  const genDate=`พิมพ์: ${today}`;
+
+  // load expenses for month when needed
+  useEffect(()=>{
+    if(type!=="expenses") return;
+    fetch(`${GAS_URL}?action=getExpenses&month=${month}`)
+      .then(r=>r.json()).then(d=>{ if(d.ok) setExpenses(d.expenses||[]); }).catch(()=>{});
+  },[type,month]);
+
+  // ── Computed data ──
+  const debtors     = customers.filter(c=>c.totalDebt>0).sort((a,b)=>b.totalDebt-a.totalDebt);
+  const overdue     = customers.filter(c=>c.totalDebt>0&&c.dueDate&&c.dueDate<=TODAY).sort((a,b)=>a.dueDate.localeCompare(b.dueDate));
+  const totalDebt   = debtors.reduce((s,c)=>s+c.totalDebt,0);
+  const totalOver   = overdue.reduce((s,c)=>s+c.totalDebt,0);
+  const totalExp    = expenses.reduce((s,e)=>s+e.total,0);
+
+  // ── Print ──
+  const doPrint=()=>{
+    const orig=document.title;
+    document.title=`รายงาน_${type}_${month}`;
+    window.print();
+    document.title=orig;
+  };
+
+  // ── Save JPG ──
+  const doSaveJpg=async()=>{
+    setSaving(true); setMsg("กำลังสร้างรูปภาพ...");
+    try{
+      const h2c=await loadHtml2Canvas();
+      const canvas=await h2c(reportRef.current,{
+        scale:2, useCORS:true, backgroundColor:"#ffffff",
+        width:794, windowWidth:794,
+        onclone:(doc)=>{
+          const el=doc.getElementById("report-page");
+          if(el){ el.style.boxShadow="none"; el.style.margin="0"; }
+        }
+      });
+      const link=document.createElement("a");
+      link.download=`รายงาน_${type}_${month}.jpg`;
+      link.href=canvas.toDataURL("image/jpeg",0.95);
+      link.click();
+      setMsg("✅ บันทึกไฟล์แล้ว!");
+    }catch(e){
+      setMsg("❌ เกิดข้อผิดพลาด: "+e.message);
+    }
+    setSaving(false);
+    setTimeout(()=>setMsg(""),3000);
+  };
+
+  // ── Shared styles ──
+  const A4={
+    width:794,minHeight:1123,background:"#fff",
+    fontFamily:"'Sarabun',sans-serif",fontSize:13,
+    color:"#111",lineHeight:1.5,
+    padding:"40px 48px",boxSizing:"border-box",
+  };
+  const headerStyle={
+    borderBottom:"3px solid #1a3a2a",paddingBottom:12,marginBottom:20,
+    display:"flex",justifyContent:"space-between",alignItems:"flex-end"
+  };
+  const tableStyle={width:"100%",borderCollapse:"collapse",fontSize:12.5};
+  const th={background:"#1a3a2a",color:"#fff",padding:"7px 10px",textAlign:"left",fontWeight:700};
+  const td={padding:"6px 10px",borderBottom:"1px solid #e5e7eb"};
+  const tdR={...td,textAlign:"right"};
+  const altRow={background:"#f9fafb"};
+
+  // ── Report Pages ──
+  const ReportHeader=({title,subtitle})=>(
+    <div style={headerStyle}>
+      <div>
+        <div style={{fontWeight:800,fontSize:18,color:"#1a3a2a"}}>🏪 {SHOP_NAME}</div>
+        <div style={{fontWeight:700,fontSize:15,marginTop:2}}>{title}</div>
+        {subtitle&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{subtitle}</div>}
+      </div>
+      <div style={{textAlign:"right",fontSize:11,color:"#9ca3af"}}>
+        <div>{genDate}</div>
+        <div>{APP_VERSION}</div>
+      </div>
+    </div>
+  );
+
+  const ReportFooter=({rows,totalLabel,totalVal,color="#1a3a2a"})=>(
+    <div style={{borderTop:"2px solid #1a3a2a",marginTop:8,paddingTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      <div style={{fontSize:12,color:"#6b7280"}}>รวมทั้งหมด {rows} รายการ</div>
+      <div style={{fontWeight:800,fontSize:16,color}}>{totalLabel}: ฿{fmt(totalVal)}</div>
+    </div>
+  );
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#e5e7eb",zIndex:989,display:"flex",flexDirection:"column",fontFamily:"'Sarabun',sans-serif"}}>
+
+      {/* ── Control bar ── */}
+      <div className="no-print" style={{background:"#1a3a2a",color:"#fff",padding:"12px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0,flexWrap:"wrap"}}>
+        <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer",flexShrink:0}}>←</button>
+        <span style={{fontWeight:800,fontSize:"1em",marginRight:8}}>📄 รายงาน</span>
+
+        {/* Report type */}
+        <div style={{display:"flex",gap:6,flex:1,flexWrap:"wrap"}}>
+          {REPORT_TYPES.map(r=>(
+            <button key={r.id} onClick={()=>setType(r.id)}
+              style={{padding:"5px 12px",borderRadius:20,border:"none",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.8em",fontWeight:type===r.id?700:400,
+                background:type===r.id?"#fff":"rgba(255,255,255,.15)",color:type===r.id?"#1a3a2a":"rgba(255,255,255,.8)"}}>
+              {r.icon} {r.label.replace(/^[^ ]+ /,"")}
+            </button>
+          ))}
+        </div>
+
+        {/* Month picker (for expenses) */}
+        {(type==="expenses")&&(
+          <input type="month" value={month} onChange={e=>setMonth(e.target.value)}
+            style={{padding:"4px 8px",borderRadius:8,border:"none",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",cursor:"pointer"}}/>
+        )}
+
+        {/* Action buttons */}
+        <div style={{display:"flex",gap:8,flexShrink:0}}>
+          {msg&&<span style={{fontSize:"0.82em",padding:"4px 10px",background:"rgba(255,255,255,.15)",borderRadius:8}}>{msg}</span>}
+          <button onClick={doPrint}
+            style={{padding:"8px 16px",background:"rgba(255,255,255,.15)",border:"1.5px solid rgba(255,255,255,.4)",borderRadius:10,color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",display:"flex",alignItems:"center",gap:6}}>
+            🖨️ พิมพ์
+          </button>
+          <button onClick={doSaveJpg} disabled={saving}
+            style={{padding:"8px 16px",background:"#22c55e",border:"none",borderRadius:10,color:"#fff",cursor:saving?"wait":"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",display:"flex",alignItems:"center",gap:6,opacity:saving?.7:1}}>
+            {saving?"⏳":"📸"} บันทึก JPG
+          </button>
+        </div>
+      </div>
+
+      {/* ── A4 Preview ── */}
+      <div style={{flex:1,overflowY:"auto",padding:"24px",display:"flex",justifyContent:"center",alignItems:"flex-start"}}>
+        <div ref={reportRef} id="report-page" style={{...A4,boxShadow:"0 8px 40px rgba(0,0,0,.2)",borderRadius:4}}>
+
+          {/* ════ REPORT: DEBTORS ════ */}
+          {type==="debtors"&&(
+            <>
+              <ReportHeader title="รายงานลูกหนี้ทั้งหมด" subtitle={`ณ วันที่ ${today}`}/>
+              {debtors.length===0?(
+                <div style={{textAlign:"center",padding:60,color:"#9ca3af"}}>✅ ไม่มีลูกหนี้ค้างชำระ</div>
+              ):(
+                <>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={{...th,width:28}}>#</th>
+                        <th style={th}>ชื่อ-สกุล</th>
+                        <th style={th}>เบอร์โทร</th>
+                        <th style={{...th,textAlign:"right"}}>ยอดค้าง (฿)</th>
+                        <th style={{...th,textAlign:"center"}}>วันทวง</th>
+                        <th style={{...th,textAlign:"center"}}>สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {debtors.map((c,i)=>{
+                        const isOv=c.dueDate&&c.dueDate<=TODAY;
+                        return(
+                          <tr key={c.id} style={i%2===1?altRow:{}}>
+                            <td style={{...td,color:"#9ca3af",textAlign:"center"}}>{i+1}</td>
+                            <td style={{...td,fontWeight:600}}>{c.name}</td>
+                            <td style={{...td,color:"#6b7280"}}>{c.phone||"-"}</td>
+                            <td style={{...tdR,fontWeight:700,color:"#ef4444"}}>฿{fmt(c.totalDebt)}</td>
+                            <td style={{...td,textAlign:"center",color:isOv?"#ef4444":"#374151"}}>{thDate(c.dueDate)||"-"}</td>
+                            <td style={{...td,textAlign:"center"}}>
+                              <span style={{background:isOv?"#fef2f2":"#fff7ed",color:isOv?"#ef4444":"#f59e0b",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>
+                                {isOv?"เกินกำหนด":"ค้างชำระ"}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <ReportFooter rows={debtors.length} totalLabel="รวมยอดค้าง" totalVal={totalDebt} color="#ef4444"/>
+                  {/* Note area */}
+                  <div style={{marginTop:40,borderTop:"1px dashed #e5e7eb",paddingTop:16}}>
+                    <div style={{fontSize:11,color:"#9ca3af",marginBottom:8}}>หมายเหตุ / Note:</div>
+                    <div style={{height:60,borderBottom:"1px solid #e5e7eb"}}/>
+                  </div>
+                  <div style={{marginTop:32,display:"grid",gridTemplateColumns:"1fr 1fr",gap:40}}>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{height:1,background:"#374151",marginBottom:8}}/>
+                      <div style={{fontSize:11,color:"#6b7280"}}>ผู้จัดทำรายงาน</div>
+                    </div>
+                    <div style={{textAlign:"center"}}>
+                      <div style={{height:1,background:"#374151",marginBottom:8}}/>
+                      <div style={{fontSize:11,color:"#6b7280"}}>ผู้ตรวจสอบ</div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ════ REPORT: OVERDUE ════ */}
+          {type==="overdue"&&(
+            <>
+              <ReportHeader title="รายงานลูกหนี้ค้างเกินกำหนด" subtitle={`ณ วันที่ ${today}`}/>
+              {overdue.length===0?(
+                <div style={{textAlign:"center",padding:60,color:"#22c55e",fontSize:16}}>✅ ไม่มีลูกหนี้เกินกำหนด!</div>
+              ):(
+                <>
+                  <div style={{background:"#fef2f2",border:"1px solid #fca5a5",borderRadius:10,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#b91c1c"}}>
+                    ⚠️ พบลูกหนี้ที่เกินกำหนดชำระทั้งหมด {overdue.length} ราย รวมยอด ฿{fmt(totalOver)}
+                  </div>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={{...th,width:28}}>#</th>
+                        <th style={th}>ชื่อ-สกุล</th>
+                        <th style={th}>เบอร์โทร</th>
+                        <th style={{...th,textAlign:"right"}}>ยอดค้าง (฿)</th>
+                        <th style={{...th,textAlign:"center"}}>กำหนดชำระ</th>
+                        <th style={{...th,textAlign:"center"}}>เกิน (วัน)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {overdue.map((c,i)=>{
+                        const days=c.dueDate?Math.floor((new Date()-new Date(c.dueDate))/(86400000)):0;
+                        return(
+                          <tr key={c.id} style={{background:i%2===1?"#fff5f5":"#fef2f2"}}>
+                            <td style={{...td,textAlign:"center",color:"#9ca3af"}}>{i+1}</td>
+                            <td style={{...td,fontWeight:700,color:"#b91c1c"}}>{c.name}</td>
+                            <td style={{...td,color:"#6b7280"}}>{c.phone||"-"}</td>
+                            <td style={{...tdR,fontWeight:800,color:"#ef4444"}}>฿{fmt(c.totalDebt)}</td>
+                            <td style={{...td,textAlign:"center",color:"#ef4444"}}>{thDate(c.dueDate)||"-"}</td>
+                            <td style={{...td,textAlign:"center"}}>
+                              <span style={{background:"#ef4444",color:"#fff",padding:"2px 8px",borderRadius:20,fontSize:11,fontWeight:700}}>{days} วัน</span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <ReportFooter rows={overdue.length} totalLabel="รวมยอดค้างเกินกำหนด" totalVal={totalOver} color="#ef4444"/>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ════ REPORT: EXPENSES ════ */}
+          {type==="expenses"&&(
+            <>
+              <ReportHeader title={`รายงานรายจ่ายซื้อสด — ${monthLabel}`} subtitle="โหมดรถส่งของ"/>
+              {expenses.length===0?(
+                <div style={{textAlign:"center",padding:60,color:"#9ca3af"}}>ไม่มีรายจ่ายในเดือนนี้</div>
+              ):(
+                <>
+                  <table style={tableStyle}>
+                    <thead>
+                      <tr>
+                        <th style={{...th,width:28}}>#</th>
+                        <th style={{...th,width:90}}>วันที่</th>
+                        <th style={th}>ร้านค้า / ซัพพลายเออร์</th>
+                        <th style={th}>รายการ</th>
+                        <th style={{...th,textAlign:"right"}}>จำนวน (฿)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[...expenses].sort((a,b)=>a.date.localeCompare(b.date)).map((e,i)=>(
+                        <tr key={e.id} style={i%2===1?altRow:{}}>
+                          <td style={{...td,textAlign:"center",color:"#9ca3af"}}>{i+1}</td>
+                          <td style={{...td,color:"#6b7280",fontSize:11}}>{thDate(e.date)}</td>
+                          <td style={{...td,fontWeight:600}}>{e.supplier||"-"}</td>
+                          <td style={{...td,color:"#374151",fontSize:11}}>
+                            {(e.items||[]).slice(0,3).map(it=>it.name).join(", ")}
+                            {(e.items||[]).length>3?`... +${(e.items||[]).length-3}`:""}{e.note?` (${e.note})`:""}
+                          </td>
+                          <td style={{...tdR,fontWeight:700}}>฿{fmt(e.total)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  <ReportFooter rows={expenses.length} totalLabel="รวมจ่ายออก" totalVal={totalExp} color="#2563eb"/>
+                </>
+              )}
+            </>
+          )}
+
+          {/* ════ REPORT: SUMMARY ════ */}
+          {type==="summary"&&(
+            <>
+              <ReportHeader title="รายงานสรุปภาพรวม" subtitle={`ณ วันที่ ${today}`}/>
+              {/* KPI boxes */}
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:20}}>
+                {[
+                  {label:"ลูกหนี้ทั้งหมด",value:`${debtors.length} ราย`,color:"#f59e0b",bg:"#fffbeb"},
+                  {label:"ยอดค้างรวม",value:`฿${fmt(totalDebt)}`,color:"#ef4444",bg:"#fef2f2"},
+                  {label:"เกินกำหนด",value:`${overdue.length} ราย`,color:"#dc2626",bg:"#fff5f5"},
+                  {label:"ลูกค้าทั้งหมด",value:`${customers.length} คน`,color:"#1a3a2a",bg:"#f0fdf4"},
+                  {label:"บันทึกวันนี้",value:`${transactions.filter(t=>t.date===TODAY).length} รายการ`,color:"#2563eb",bg:"#eff6ff"},
+                  {label:"ชำระครบแล้ว",value:`${customers.filter(c=>c.totalDebt===0).length} คน`,color:"#22c55e",bg:"#f0fdf4"},
+                ].map((k,i)=>(
+                  <div key={i} style={{background:k.bg,borderRadius:10,padding:"12px 14px",border:`1px solid ${k.color}33`}}>
+                    <div style={{fontSize:11,color:"#6b7280",marginBottom:4}}>{k.label}</div>
+                    <div style={{fontWeight:800,fontSize:16,color:k.color}}>{k.value}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Top debtors */}
+              <div style={{marginBottom:16}}>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#1a3a2a"}}>🔴 TOP ลูกหนี้ยอดสูงสุด</div>
+                <table style={tableStyle}>
+                  <thead><tr>
+                    <th style={{...th,width:28}}>#</th>
+                    <th style={th}>ชื่อ</th>
+                    <th style={{...th,textAlign:"right"}}>ยอดค้าง</th>
+                    <th style={{...th,textAlign:"center"}}>กำหนดชำระ</th>
+                  </tr></thead>
+                  <tbody>
+                    {debtors.slice(0,10).map((c,i)=>(
+                      <tr key={c.id} style={i%2===1?altRow:{}}>
+                        <td style={{...td,textAlign:"center",color:"#9ca3af"}}>{i+1}</td>
+                        <td style={{...td,fontWeight:600}}>{c.name}</td>
+                        <td style={{...tdR,color:"#ef4444",fontWeight:700}}>฿{fmt(c.totalDebt)}</td>
+                        <td style={{...td,textAlign:"center",color:c.dueDate&&c.dueDate<=TODAY?"#ef4444":"#374151"}}>{thDate(c.dueDate)||"-"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {/* Recent transactions */}
+              <div>
+                <div style={{fontWeight:700,fontSize:13,marginBottom:8,color:"#1a3a2a"}}>📋 รายการล่าสุด (10 รายการ)</div>
+                <table style={tableStyle}>
+                  <thead><tr>
+                    <th style={th}>วันที่</th>
+                    <th style={th}>ลูกค้า</th>
+                    <th style={th}>รายการ</th>
+                    <th style={{...th,textAlign:"right"}}>ยอด</th>
+                    <th style={{...th,textAlign:"center"}}>สถานะ</th>
+                  </tr></thead>
+                  <tbody>
+                    {[...transactions].sort((a,b)=>b.id-a.id).slice(0,10).map((t,i)=>{
+                      const c=customers.find(x=>x.id===t.customerId);
+                      return(
+                        <tr key={t.id} style={i%2===1?altRow:{}}>
+                          <td style={{...td,fontSize:11,color:"#6b7280"}}>{thDate(t.date)}</td>
+                          <td style={{...td,fontWeight:600}}>{c?.name||"-"}</td>
+                          <td style={{...td,fontSize:11,color:"#374151"}}>{(t.items||[]).slice(0,2).map(it=>it.name).join(", ")}{(t.items||[]).length>2?"...":""}</td>
+                          <td style={{...tdR,fontWeight:700}}>฿{fmt(t.total)}</td>
+                          <td style={{...td,textAlign:"center"}}>
+                            <span style={{background:t.paid?"#f0fdf4":"#fff7ed",color:t.paid?"#15803d":"#f59e0b",padding:"2px 8px",borderRadius:20,fontSize:10,fontWeight:700}}>
+                              {t.paid?"จ่ายแล้ว":"ค้างอยู่"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          {/* Footer */}
+          <div style={{marginTop:32,paddingTop:12,borderTop:"1px solid #e5e7eb",display:"flex",justifyContent:"space-between",fontSize:10,color:"#d1d5db"}}>
+            <span>🏪 {SHOP_NAME} · ระบบสมุดหนี้โชห่วย {APP_VERSION}</span>
+            <span>{genDate}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Print CSS */}
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+          body { background: white !important; margin: 0 !important; }
+          #report-page {
+            box-shadow: none !important;
+            margin: 0 !important;
+            border-radius: 0 !important;
+            width: 210mm !important;
+            min-height: 297mm !important;
+            padding: 15mm 20mm !important;
+            font-size: 11pt !important;
+          }
+          @page { size: A4 portrait; margin: 0; }
+        }
+      `}</style>
+    </div>
+  );
+}
+
+// ══ CashOut View — โหมดรถส่งของ ══════════════════
+function CashOutView({onClose,showToast,settings}){
+  const [step,  setStep]  = useState("form"); // form|confirm|done
+  const [supplier,setSupplier]=useState("");
+  const [items, setItems] = useState([{name:"",price:""}]);
+  const [note,  setNote]  = useState("");
+  const [hist,  setHist]  = useState(null);   // {expenses,todayTotal,monthTotal}
+  const [tab,   setTab]   = useState("new");  // new|history
+  const [saving,setSaving]= useState(false);
+  const [dateFilter,setDateFilter]=useState(new Date().toISOString().slice(0,7));
+
+  const total = items.reduce((s,it)=>s+(parseFloat(it.price)||0),0);
+  const addItem = ()=>setItems(p=>[...p,{name:"",price:""}]);
+  const removeItem=i=>setItems(p=>p.filter((_,idx)=>idx!==i));
+  const updItem=(i,f,v)=>setItems(p=>{const a=[...p];a[i]={...a[i],[f]:v};return a;});
+
+  const loadHistory=async(month)=>{
+    try{
+      const res=await fetch(`${GAS_URL}?action=getExpenses&month=${month||dateFilter}`);
+      const d=await res.json();
+      if(d.ok) setHist(d);
+    }catch{}
+  };
+
+  useEffect(()=>{ if(tab==="history") loadHistory(dateFilter); },[tab,dateFilter]);
+
+  const submit=async()=>{
+    setSaving(true);
+    const expItems=items.filter(it=>it.name||it.price).map(it=>({name:it.name||"รายการ",price:parseFloat(it.price)||0}));
+    const today=new Date().toISOString().slice(0,10);
+    try{
+      fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"addExpense",supplier,items:expItems,total,date:today,note})}).catch(()=>{});
+      setTimeout(()=>{
+        setSaving(false);
+        setStep("done");
+        if(tab==="history") loadHistory(dateFilter);
+      },600);
+    }catch{ setSaving(false); }
+  };
+
+  const reset=()=>{ setSupplier(""); setItems([{name:"",price:""}]); setNote(""); setStep("form"); };
+  const thMonths=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+
+  return(
+    <div style={{position:"fixed",inset:0,background:"#f4f6f0",zIndex:990,display:"flex",flexDirection:"column",fontFamily:"'Sarabun',sans-serif"}}>
+
+      {/* Header */}
+      <div style={{background:"linear-gradient(135deg,#1e3a5f,#2563eb)",color:"#fff",padding:"20px 16px 0",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:14}}>
+          <button onClick={onClose} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer"}}>←</button>
+          <span style={{fontWeight:800,fontSize:"1.15em",flex:1}}>🚛 รถส่งของ — จ่ายเงินสด</span>
+        </div>
+        {/* Tabs */}
+        <div style={{display:"flex",gap:0}}>
+          {[["new","➕ บันทึกใหม่"],["history","📋 ประวัติจ่าย"]].map(([t,l])=>(
+            <button key={t} onClick={()=>setTab(t)}
+              style={{flex:1,padding:"10px 0",border:"none",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",
+                background:tab===t?"#fff":"transparent",
+                color:tab===t?"#1e3a5f":"rgba(255,255,255,.7)",
+                borderRadius:tab===t?"12px 12px 0 0":"0"}}>
+              {l}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── TAB: NEW EXPENSE ── */}
+      {tab==="new"&&(
+        <div style={{flex:1,overflowY:"auto",padding:16}}>
+          {step==="done"?(
+            <div style={{textAlign:"center",padding:"40px 20px"}}>
+              <div style={{fontSize:56,marginBottom:16}}>✅</div>
+              <div style={{fontWeight:800,fontSize:"1.2em",color:"#15803d",marginBottom:6}}>บันทึกแล้ว!</div>
+              <div style={{color:"#6b7280",marginBottom:8}}>จ่ายให้ <b>{supplier||"ซัพพลายเออร์"}</b></div>
+              <div style={{fontWeight:800,fontSize:"1.8em",color:"#1e3a5f",marginBottom:24}}>฿{fmt(total)}</div>
+              <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+                <button onClick={reset} style={{padding:"12px 24px",background:"#2563eb",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>+ บันทึกอีกครั้ง</button>
+                <button onClick={()=>{setTab("history");loadHistory(dateFilter);}} style={{padding:"12px 24px",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>📋 ดูประวัติ</button>
+              </div>
+            </div>
+          ):step==="confirm"?(
+            <div>
+              <div style={{background:"#fff",borderRadius:16,padding:20,marginBottom:14,boxShadow:"0 4px 20px rgba(0,0,0,.08)",textAlign:"center"}}>
+                <div style={{fontSize:36,marginBottom:8}}>🚛</div>
+                <div style={{fontWeight:800,fontSize:"1.15em",color:"#1e3a5f"}}>{supplier||"ไม่ระบุร้านค้า"}</div>
+              </div>
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                {items.filter(it=>it.name||it.price).map((it,i)=>(
+                  <div key={i} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"1px solid #f3f4f6"}}>
+                    <span>{it.name||"รายการ"}</span><span style={{fontWeight:600}}>฿{fmt(parseFloat(it.price)||0)}</span>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:10,paddingTop:10,borderTop:"2px solid #1e3a5f"}}>
+                  <span style={{fontWeight:800}}>💸 รวมจ่าย</span>
+                  <span style={{fontWeight:800,fontSize:"1.2em",color:"#2563eb"}}>฿{fmt(total)}</span>
+                </div>
+              </div>
+              {note&&<div style={{background:"#eff6ff",borderRadius:12,padding:"10px 14px",marginBottom:14,fontSize:"0.85em",color:"#1e40af"}}>📝 {note}</div>}
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>setStep("form")} style={{flex:1,padding:"14px 0",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:14,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>← แก้ไข</button>
+                <button onClick={submit} disabled={saving} style={{flex:2,padding:"14px 0",background:saving?"#9ca3af":"#2563eb",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.05em",cursor:saving?"default":"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 16px rgba(37,99,235,.4)"}}>
+                  {saving?"⏳ กำลังบันทึก...":"✅ ยืนยันจ่ายเงิน"}
+                </button>
+              </div>
+            </div>
+          ):(
+            /* Form */
+            <>
+              {/* Supplier */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                <div style={{fontWeight:700,marginBottom:10,color:"#1e3a5f",display:"flex",alignItems:"center",gap:6}}>🚛 ร้านค้า / ซัพพลายเออร์</div>
+                <input value={supplier} onChange={e=>setSupplier(e.target.value)} placeholder="เช่น ร้านค้าส่งตลาด, บริษัทน้ำ, โรงงานข้าวสาร..."
+                  style={{width:"100%",padding:"11px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none"}}/>
+                {/* Quick supplier buttons */}
+                <div style={{display:"flex",gap:6,marginTop:8,flexWrap:"wrap"}}>
+                  {["ร้านค้าส่ง","บริษัทน้ำ","โรงงานข้าวสาร","บริษัทน้ำมัน","ตลาด"].map(s=>(
+                    <button key={s} onClick={()=>setSupplier(s)}
+                      style={{padding:"5px 10px",background:supplier===s?"#2563eb":"#eff6ff",color:supplier===s?"#fff":"#1e40af",border:"1.5px solid #bfdbfe",borderRadius:20,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.8em",fontWeight:supplier===s?700:400}}>
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Items */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                <div style={{fontWeight:700,marginBottom:10,color:"#1e3a5f"}}>📦 รายการสินค้า</div>
+                {items.map((it,i)=>(
+                  <div key={i} style={{display:"flex",gap:8,marginBottom:8,alignItems:"center"}}>
+                    <input value={it.name} onChange={e=>updItem(i,"name",e.target.value)} placeholder="ชื่อสินค้า/รายการ"
+                      style={{flex:2,padding:"9px 10px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",outline:"none"}}/>
+                    <input value={it.price} onChange={e=>updItem(i,"price",e.target.value)} placeholder="฿" type="number" inputMode="decimal"
+                      style={{flex:1,padding:"9px 10px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",outline:"none"}}/>
+                    {items.length>1&&<button onClick={()=>removeItem(i)} style={{background:"#fee2e2",border:"none",borderRadius:8,padding:"8px 10px",cursor:"pointer",color:"#ef4444",fontWeight:700}}>🗑</button>}
+                  </div>
+                ))}
+                <button onClick={addItem} style={{width:"100%",padding:"9px 0",background:"#eff6ff",border:"1.5px dashed #2563eb",borderRadius:10,color:"#1e40af",fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",marginTop:4}}>+ เพิ่มรายการ</button>
+                <div style={{display:"flex",justifyContent:"space-between",marginTop:14,padding:"12px",background:"#eff6ff",borderRadius:10,border:"1.5px solid #bfdbfe"}}>
+                  <span style={{fontWeight:700,color:"#1e3a5f"}}>💸 รวมจ่าย</span>
+                  <span style={{fontWeight:800,fontSize:"1.2em",color:"#2563eb"}}>฿{fmt(total)}</span>
+                </div>
+              </div>
+
+              {/* Note */}
+              <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:20,boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                <div style={{fontWeight:700,marginBottom:8,color:"#1e3a5f"}}>📝 หมายเหตุ (ถ้ามี)</div>
+                <input value={note} onChange={e=>setNote(e.target.value)} placeholder="เช่น จ่ายเงินสด, โอน, ใบส่งของเลขที่..."
+                  style={{width:"100%",padding:"9px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",boxSizing:"border-box",outline:"none"}}/>
+              </div>
+
+              <button onClick={()=>{if(total>0)setStep("confirm");}} disabled={total<=0}
+                style={{width:"100%",padding:"16px 0",background:total>0?"#2563eb":"#d1d5db",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.1em",cursor:total>0?"pointer":"not-allowed",fontFamily:"'Sarabun',sans-serif",boxShadow:total>0?"0 4px 16px rgba(37,99,235,.4)":"none"}}>
+                ถัดไป → ยืนยัน
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── TAB: HISTORY ── */}
+      {tab==="history"&&(
+        <div style={{flex:1,overflowY:"auto",padding:16}}>
+          {/* Month picker */}
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m)-2,1);setDateFilter(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);loadHistory(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>←</button>
+            <div style={{flex:1,textAlign:"center",fontWeight:700,color:"#1e3a5f"}}>
+              {dateFilter&&`${thMonths[parseInt(dateFilter.split("-")[1])-1]} ${parseInt(dateFilter.split("-")[0])+543}`}
+            </div>
+            <button onClick={()=>{const[y,m]=dateFilter.split("-");const d=new Date(Number(y),Number(m),1);setDateFilter(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);loadHistory(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);}} style={{background:"#f3f4f6",border:"none",borderRadius:10,padding:"8px 14px",cursor:"pointer",fontWeight:700,fontSize:"1em"}}>→</button>
+          </div>
+
+          {/* Summary */}
+          {hist&&(
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+              <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)",borderLeft:"4px solid #2563eb"}}>
+                <div style={{fontSize:"0.78em",color:"#6b7280"}}>จ่ายออกวันนี้</div>
+                <div style={{fontWeight:800,fontSize:"1.3em",color:"#2563eb"}}>฿{fmt(hist.todayTotal)}</div>
+              </div>
+              <div style={{background:"#fff",borderRadius:14,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,.06)",borderLeft:"4px solid #1e3a5f"}}>
+                <div style={{fontSize:"0.78em",color:"#6b7280"}}>จ่ายออกเดือนนี้</div>
+                <div style={{fontWeight:800,fontSize:"1.3em",color:"#1e3a5f"}}>฿{fmt(hist.monthTotal)}</div>
+              </div>
+            </div>
+          )}
+
+          {!hist&&<div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>⏳ กำลังโหลด...</div>}
+          {hist&&hist.expenses.length===0&&<div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>ไม่มีรายจ่ายเดือนนี้</div>}
+
+          {hist&&hist.expenses.map(e=>(
+            <div key={e.id} style={{background:"#fff",borderRadius:14,padding:14,marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,.06)",borderLeft:"4px solid #bfdbfe"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+                <div>
+                  <div style={{fontWeight:700,color:"#1e3a5f"}}>🚛 {e.supplier||"ไม่ระบุ"}</div>
+                  <div style={{fontSize:"0.8em",color:"#9ca3af"}}>📅 {e.date}</div>
+                </div>
+                <div style={{fontWeight:800,fontSize:"1.1em",color:"#2563eb"}}>฿{fmt(e.total)}</div>
+              </div>
+              {e.items&&e.items.length>0&&(
+                <div style={{borderTop:"1px solid #f3f4f6",paddingTop:6,marginTop:4}}>
+                  {e.items.map((it,i)=>(
+                    <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.85em",color:"#374151",paddingBottom:2}}>
+                      <span>• {it.name}</span><span>฿{fmt(it.price)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {e.note&&<div style={{marginTop:6,fontSize:"0.78em",color:"#6b7280",background:"#f9fafb",borderRadius:6,padding:"3px 8px"}}>📝 {e.note}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ Help Modal ═══════════════════════════════════
+const HELP_SECTIONS = [
+  {
+    icon:"➕", title:"บันทึกหนี้ใหม่",
+    steps:[
+      "กดปุ่ม + บันทึก ที่แถบล่าง",
+      "เลือกลูกค้า หรือพิมพ์ชื่อเพื่อเพิ่มใหม่",
+      "ถ่ายรูปลูกหนี้ได้ตอนเพิ่มใหม่",
+      "ใส่รายการสินค้าและราคา",
+      "ตั้งวันทวง และดอกเบี้ย (ถ้ามี)",
+      "กด ถัดไป → ยืนยัน → บันทึก",
+    ]
+  },
+  {
+    icon:"💳", title:"รับชำระเงิน (QR)",
+    steps:[
+      "เปิดหน้าลูกค้า → กด 💳 QR รับเงิน",
+      "ใส่จำนวนเงิน หรือกด เต็ม",
+      "ให้ลูกหนี้สแกน QR PromptPay",
+      "กด ✅ ยืนยันรับเงิน",
+      "ระบบจะแจ้งเตือน Email + LINE อัตโนมัติ",
+    ]
+  },
+  {
+    icon:"📷", title:"รูปภาพลูกหนี้",
+    steps:[
+      "เพิ่มใหม่: ถ่ายรูปตอนเพิ่มลูกค้า",
+      "แก้ไขรูป: เปิดหน้าลูกค้า → กด 📷",
+      "รูปเก็บบน Google Drive อัตโนมัติ",
+      "รูปจะแสดงใน LINE แจ้งเตือนด้วย",
+    ]
+  },
+  {
+    icon:"📝", title:"Note & เบอร์โทร",
+    steps:[
+      "เปิดหน้าลูกค้า → แตะ 📞 เพื่อเพิ่มเบอร์",
+      "เลื่อนลงหา Note → กด + เพิ่ม Note",
+      "Note ใช้จดข้อมูลพิเศษเช่น บ้านใกล้วัด",
+      "Note จะแสดงย่อๆ ในรายการลูกหนี้",
+    ]
+  },
+  {
+    icon:"📊", title:"ดูยอดและปฏิทิน",
+    steps:[
+      "หน้าหลัก: ดูยอดค้างรวม + รายการล่าสุด",
+      "แท็บ 👥 ลูกหนี้: เฉพาะคนที่ยังค้างอยู่",
+      "เรียงได้: ยอดมาก/น้อย, ชื่อ, ใกล้ทวง",
+      "แท็บ 📅 ปฏิทิน: กดวันเพื่อดูรายชื่อ",
+      "แท็บ 📊 สรุป: ดูยอดค้างพร้อมดอกเบี้ย",
+    ]
+  },
+  {
+    icon:"💬", title:"LINE OA Chatbot",
+    steps:[
+      "เจ้าหนี้ Admin พิมพ์คำสั่งใน LINE ได้เลย",
+      "บันทึก [ชื่อ] [฿] [รายการ] — จดหนี้",
+      "รับ [ชื่อ] [฿] — รับชำระเงิน",
+      "ยอด [ชื่อ] — เช็คยอดค้าง",
+      "รายการ — ดูลูกหนี้ทั้งหมด",
+      "วันนี้ — ดูครบกำหนดวันนี้",
+    ]
+  },
+  {
+    icon:"⚙️", title:"ตั้งค่า (Admin เท่านั้น)",
+    steps:[
+      "กดไอคอน ⚙️ มุมขวาบน",
+      "ใส่รหัส 4 หลัก เพื่อเข้าตั้งค่า",
+      "ตั้งค่า PromptPay, Email, LINE OA",
+      "เพิ่มผู้ช่วย Admin และอนุมัติคำขอ",
+      "Backup ข้อมูลขึ้น Google Sheets",
+    ]
+  },
+];
+
+function HelpModal({onClose}){
+  const [section, setSection] = useState(0);
+  const s = HELP_SECTIONS[section];
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:2000,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
+
+        {/* Header */}
+        <div style={{background:"#1a3a2a",color:"#fff",padding:"20px 20px 16px",borderRadius:"24px 24px 0 0",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div>
+              <div style={{fontWeight:800,fontSize:"1.1em"}}>📖 วิธีใช้งาน</div>
+              <div style={{fontSize:"0.78em",opacity:.6,marginTop:2}}>สมุดหนี้โชห่วย · {APP_VERSION}</div>
+            </div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:36,height:36,cursor:"pointer",fontSize:18,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+          </div>
+          {/* Tab pills */}
+          <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+            {HELP_SECTIONS.map((sec,i)=>(
+              <button key={i} onClick={()=>setSection(i)}
+                style={{padding:"5px 12px",borderRadius:20,border:"none",cursor:"pointer",flexShrink:0,fontFamily:"'Sarabun',sans-serif",fontSize:"0.8em",fontWeight:section===i?700:400,
+                  background:section===i?"#fff":"rgba(255,255,255,.15)",
+                  color:section===i?"#1a3a2a":"rgba(255,255,255,.8)"}}>
+                {sec.icon}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{padding:"20px",overflowY:"auto",flex:1}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+            <div style={{width:44,height:44,borderRadius:"50%",background:"#f0fdf4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>
+              {s.icon}
+            </div>
+            <div style={{fontWeight:800,fontSize:"1.1em",color:"#1a3a2a"}}>{s.title}</div>
+          </div>
+          <div>
+            {s.steps.map((step,i)=>(
+              <div key={i} style={{display:"flex",gap:12,marginBottom:14,alignItems:"flex-start"}}>
+                <div style={{width:26,height:26,borderRadius:"50%",background:"#1a3a2a",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:"0.8em",flexShrink:0,marginTop:1}}>
+                  {i+1}
+                </div>
+                <div style={{fontSize:"0.95em",color:"#374151",lineHeight:1.6,paddingTop:3}}>{step}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div style={{padding:"12px 20px 28px",display:"flex",gap:10,flexShrink:0,borderTop:"1px solid #f3f4f6"}}>
+          <button onClick={()=>setSection(s=>Math.max(0,s-1))} disabled={section===0}
+            style={{flex:1,padding:"11px 0",background:section===0?"#f3f4f6":"#f0fdf4",border:`1.5px solid ${section===0?"#e5e7eb":"#22c55e"}`,borderRadius:12,fontWeight:600,cursor:section===0?"default":"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",color:section===0?"#9ca3af":"#15803d"}}>
+            ← ก่อนหน้า
+          </button>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            {HELP_SECTIONS.map((_,i)=>(
+              <div key={i} onClick={()=>setSection(i)} style={{width:i===section?20:6,height:6,borderRadius:3,background:i===section?"#1a7a4a":"#d1d5db",transition:"width .2s",cursor:"pointer"}}/>
+            ))}
+          </div>
+          {section<HELP_SECTIONS.length-1?(
+            <button onClick={()=>setSection(s=>Math.min(HELP_SECTIONS.length-1,s+1))}
+              style={{flex:1,padding:"11px 0",background:"#1a7a4a",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",color:"#fff"}}>
+              ถัดไป →
+            </button>
+          ):(
+            <button onClick={onClose}
+              style={{flex:1,padding:"11px 0",background:"#1a7a4a",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.9em",color:"#fff"}}>
+              ✅ เข้าใจแล้ว!
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ══ Support Page ══════════════════════════════════
 function SupportPage({settings,onClose}){
-  const [name,setName]=useState("");
-  const [slip,setSlip]=useState(null);       // base64 slip image
-  const [slipPreview,setSlipPreview]=useState(null);
-  const [state,setState]=useState("idle");   // idle|sending|done|error
-  const slipRef=useRef();
-  const amount=settings?.supportAmount||399;
-  const ppId=settings?.supportPromptpay||SUPPORT_QR;
-  const payload=genQR(ppId,amount);
-  const imgUrl=qrUrl(payload);
+  const [tab,setTab]          = useState("pay");      // pay | compare
+  const [name,setName]        = useState("");
+  const [slip,setSlip]        = useState(null);
+  const [slipPreview,setSlipPreview] = useState(null);
+  const [slipLoading,setSlipLoading] = useState(false);
+  const [state,setState]      = useState("idle");     // idle|sending|done|error
+  const slipRef = useRef();
+  const amount  = settings?.supportAmount||399;
+  const ppId    = settings?.supportPromptpay||SUPPORT_QR;
+  const payload = genQR(ppId,amount);
+  const imgUrl  = qrUrl(payload);
 
   const handleSlip=async e=>{
     const f=e.target.files[0];
     if(!f)return;
-    // compress slip for sending
-    const b64=await compressImage(f,800);
-    setSlip(b64);
-    setSlipPreview(b64);
+    setSlipLoading(true);
+    try{
+      const b64=await compressImage(f,800);
+      setSlip(b64); setSlipPreview(b64);
+    }catch{ /* ignore */ }
+    setSlipLoading(false);
   };
 
-  const removeSlip=()=>{ setSlip(null); setSlipPreview(null); slipRef.current.value=""; };
+  const removeSlip=()=>{ setSlip(null); setSlipPreview(null); if(slipRef.current)slipRef.current.value=""; };
 
   const submit=async()=>{
-    if(!name.trim())return;
+    if(!name.trim()) return;
     setState("sending");
     try{
-      await gasPostRead({action:"supportPayment",name,amount,slip:slip||null});
-      setState("done");
+      // fire-and-forget — don't block UI waiting for Drive upload
+      gasPostRead({action:"supportPayment",name,amount,slip:slip||null});
+      // show success immediately
+      setTimeout(()=>setState("done"),800);
     }catch{
       setState("error");
       setTimeout(()=>setState("idle"),2500);
@@ -551,80 +1434,167 @@ function SupportPage({settings,onClose}){
 
   const canSend=name.trim()&&slip;
 
+  // ── Version comparison data ──
+  const FREE_FEATURES=[
+    "บันทึกลูกหนี้ไม่จำกัด",
+    "QR PromptPay รับชำระ",
+    "แจ้งเตือนทาง Email",
+    "Backup ขึ้น Google Sheets",
+    "ปฏิทินวันทวง",
+    "Note & เบอร์โทรลูกค้า",
+    "รูปภาพลูกหนี้",
+    "เรียงลำดับลูกหนี้",
+  ];
+  const FULL_FEATURES=[
+    ...FREE_FEATURES,
+    "แจ้งเตือน LINE OA ทันที",
+    "รูปลูกหนี้ใน LINE แจ้งเตือน",
+    "LINE Chatbot บันทึก/เช็คยอด",
+    "อนุมัติผู้ช่วย Admin ผ่าน LINE",
+    "ดอกเบี้ยอัตโนมัติ",
+    "Due Summary ละเอียด",
+    "Full Version Badge 🎉",
+  ];
+
   return(
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:997,display:"flex",alignItems:"center",justifyContent:"center",padding:16}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:20,padding:24,width:"100%",maxWidth:400,boxShadow:"0 20px 60px rgba(0,0,0,.3)",maxHeight:"92vh",overflowY:"auto"}} onClick={e=>e.stopPropagation()}>
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.65)",zIndex:997,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+      <div style={{background:"#fff",borderRadius:"24px 24px 0 0",width:"100%",maxWidth:480,boxShadow:"0 -8px 40px rgba(0,0,0,.2)",maxHeight:"92vh",display:"flex",flexDirection:"column"}} onClick={e=>e.stopPropagation()}>
 
-        {/* Header */}
-        <div style={{textAlign:"center",marginBottom:14}}>
-          <div style={{fontSize:40,marginBottom:6}}>☕</div>
-          <div style={{fontWeight:800,fontSize:"1.2em",color:"#1a3a2a"}}>สนับสนุนค่ากาแฟ</div>
-          <div style={{color:"#6b7280",fontSize:"0.85em",marginTop:4}}>เพื่อพัฒนาระบบสมุดหนี้โชห่วยต่อไป</div>
-        </div>
-
-        {/* QR */}
-        <div style={{textAlign:"center",marginBottom:14}}>
-          <div style={{fontWeight:800,fontSize:"1.8em",color:"#1a3a2a"}}>฿{fmt(amount)}</div>
-          {imgUrl&&(
-            <div style={{display:"inline-block",padding:10,background:"#fff",borderRadius:16,boxShadow:"0 4px 20px rgba(0,0,0,.12)",border:"3px solid #f59e0b",marginTop:8}}>
-              <img src={imgUrl} alt="QR" width={180} height={180} style={{display:"block",borderRadius:8}}/>
-            </div>
-          )}
-          <div style={{fontSize:"0.8em",color:"#6b7280",marginTop:6}}>PromptPay: {ppId}</div>
-        </div>
-
-        {state==="done"?(
-          <div style={{background:"#f0fdf4",borderRadius:14,padding:16,textAlign:"center",marginBottom:12}}>
-            <div style={{fontSize:36,marginBottom:8}}>✅</div>
-            <div style={{fontWeight:700,color:"#15803d",fontSize:"1.05em"}}>ขอบคุณมากครับ!</div>
-            <div style={{color:"#6b7280",fontSize:"0.85em",marginTop:6}}>ส่ง slip ให้ Admin แล้ว<br/>Admin จะยืนยันภายใน 24 ชม.</div>
+        {/* Header with tabs */}
+        <div style={{background:"#1a3a2a",color:"#fff",padding:"20px 20px 0",borderRadius:"24px 24px 0 0",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontWeight:800,fontSize:"1.1em"}}>☕ สนับสนุนการพัฒนา</div>
+            <button onClick={onClose} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:34,height:34,cursor:"pointer",fontSize:16,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
           </div>
-        ):(
-          <>
-            {/* Name */}
-            <div style={{marginBottom:12}}>
-              <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>ชื่อ-สกุล</div>
-              <input value={name} onChange={e=>setName(e.target.value)} placeholder="ชื่อของคุณ"
-                style={{width:"100%",padding:"10px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none"}}/>
-            </div>
+          <div style={{display:"flex",gap:0}}>
+            {[["pay","💳 ชำระเงิน"],["compare","📋 เปรียบเทียบ"]].map(([t,l])=>(
+              <button key={t} onClick={()=>setTab(t)}
+                style={{flex:1,padding:"10px 0",border:"none",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",
+                  background:tab===t?"#fff":"transparent",
+                  color:tab===t?"#1a3a2a":"rgba(255,255,255,.65)",
+                  borderRadius:tab===t?"12px 12px 0 0":"0",marginBottom:tab===t?0:0}}>
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
 
-            {/* Slip Upload */}
-            <div style={{marginBottom:14}}>
-              <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>📎 แนบ Slip การโอนเงิน <span style={{color:"#ef4444"}}>*</span></div>
-              <input ref={slipRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleSlip}/>
-
-              {!slipPreview?(
-                <button onClick={()=>slipRef.current?.click()}
-                  style={{width:"100%",padding:"16px 0",background:"#fffbeb",border:"2px dashed #f59e0b",borderRadius:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,color:"#92400e",fontSize:"0.95em",display:"flex",flexDirection:"column",alignItems:"center",gap:6}}>
-                  <span style={{fontSize:28}}>📷</span>
-                  <span>ถ่ายรูป หรือ เลือก Slip จากคลัง</span>
-                  <span style={{fontSize:"0.8em",color:"#b45309",fontWeight:400}}>รองรับ JPG, PNG</span>
-                </button>
-              ):(
-                <div style={{position:"relative"}}>
-                  <img src={slipPreview} alt="slip" style={{width:"100%",borderRadius:12,border:"2px solid #22c55e",maxHeight:240,objectFit:"contain",background:"#f9fafb"}}/>
-                  <button onClick={removeSlip}
-                    style={{position:"absolute",top:8,right:8,background:"rgba(239,68,68,.9)",border:"none",borderRadius:"50%",width:30,height:30,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                  <div style={{marginTop:6,fontSize:"0.8em",color:"#15803d",textAlign:"center"}}>✅ แนบ Slip แล้ว · <span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>slipRef.current?.click()}>เปลี่ยน</span></div>
+        {/* ── TAB: COMPARE ── */}
+        {tab==="compare"&&(
+          <div style={{overflowY:"auto",flex:1,padding:"20px 16px 24px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+              {/* Free */}
+              <div style={{borderRadius:16,border:"2px solid #e5e7eb",overflow:"hidden"}}>
+                <div style={{background:"#f9fafb",padding:"12px 14px",textAlign:"center",borderBottom:"2px solid #e5e7eb"}}>
+                  <div style={{fontWeight:800,fontSize:"1em",color:"#374151"}}>ทดลองใช้</div>
+                  <div style={{fontWeight:800,fontSize:"1.4em",color:"#374151",marginTop:2}}>ฟรี</div>
+                  <div style={{fontSize:"0.75em",color:"#9ca3af"}}>ไม่มีค่าใช้จ่าย</div>
                 </div>
-              )}
+                <div style={{padding:"12px 10px"}}>
+                  {FREE_FEATURES.map((f,i)=>(
+                    <div key={i} style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-start"}}>
+                      <span style={{color:"#22c55e",flexShrink:0,fontSize:"0.9em",marginTop:1}}>✓</span>
+                      <span style={{fontSize:"0.8em",color:"#374151",lineHeight:1.4}}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {/* Full */}
+              <div style={{borderRadius:16,border:"2px solid #f59e0b",overflow:"hidden",boxShadow:"0 4px 16px rgba(245,158,11,.2)"}}>
+                <div style={{background:"linear-gradient(135deg,#f59e0b,#d97706)",padding:"12px 14px",textAlign:"center",borderBottom:"2px solid #f59e0b"}}>
+                  <div style={{fontWeight:800,fontSize:"1em",color:"#fff"}}>Full Version 🎉</div>
+                  <div style={{fontWeight:800,fontSize:"1.4em",color:"#fff",marginTop:2}}>฿{fmt(amount)}</div>
+                  <div style={{fontSize:"0.75em",color:"rgba(255,255,255,.8)"}}>จ่ายครั้งเดียว</div>
+                </div>
+                <div style={{padding:"12px 10px"}}>
+                  {FULL_FEATURES.map((f,i)=>(
+                    <div key={i} style={{display:"flex",gap:6,marginBottom:8,alignItems:"flex-start"}}>
+                      <span style={{color:i<FREE_FEATURES.length?"#22c55e":"#f59e0b",flexShrink:0,fontSize:"0.9em",marginTop:1}}>{i<FREE_FEATURES.length?"✓":"★"}</span>
+                      <span style={{fontSize:"0.8em",color:i<FREE_FEATURES.length?"#374151":"#92400e",fontWeight:i<FREE_FEATURES.length?400:600,lineHeight:1.4}}>{f}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
-
-            {/* Submit */}
-            {!canSend&&<div style={{fontSize:"0.8em",color:"#f59e0b",textAlign:"center",marginBottom:8,background:"#fffbeb",borderRadius:8,padding:"6px 10px"}}>⚠️ กรุณาใส่ชื่อและแนบ Slip ก่อนส่ง</div>}
-            <button onClick={submit} disabled={!canSend||state==="sending"}
-              style={{width:"100%",padding:"13px 0",background:canSend?"#f59e0b":"#e5e7eb",color:canSend?"#fff":"#9ca3af",border:"none",borderRadius:12,fontWeight:800,fontSize:"1em",cursor:canSend?"pointer":"default",fontFamily:"'Sarabun',sans-serif",marginBottom:10,transition:"background .2s"}}>
-              {state==="sending"?"⏳ กำลังส่ง Slip...":state==="error"?"❌ ส่งไม่สำเร็จ ลองใหม่":"📤 ส่ง Slip ให้ Admin"}
+            <button onClick={()=>setTab("pay")} style={{width:"100%",marginTop:16,padding:"13px 0",background:"linear-gradient(135deg,#f59e0b,#d97706)",color:"#fff",border:"none",borderRadius:12,fontWeight:800,fontSize:"1em",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 16px rgba(245,158,11,.4)"}}>
+              ☕ สนับสนุน ฿{fmt(amount)} → รับ Full Version
             </button>
-          </>
+          </div>
         )}
-        <button onClick={onClose} style={{width:"100%",padding:"10px 0",background:"#f3f4f6",border:"none",borderRadius:12,fontWeight:600,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",color:"#374151",fontSize:"0.9em"}}>ปิด</button>
+
+        {/* ── TAB: PAY ── */}
+        {tab==="pay"&&(
+          <div style={{overflowY:"auto",flex:1,padding:"20px 16px"}}>
+            {state==="done"?(
+              <div style={{textAlign:"center",padding:"24px 0"}}>
+                <div style={{fontSize:52,marginBottom:12}}>✅</div>
+                <div style={{fontWeight:800,color:"#15803d",fontSize:"1.1em",marginBottom:8}}>ขอบคุณมากครับ!</div>
+                <div style={{color:"#6b7280",fontSize:"0.85em",lineHeight:1.6}}>แจ้ง Admin แล้ว<br/>Admin จะส่งรหัส Full Version ให้ภายใน 24 ชม.<br/>ทาง Email ที่แจ้งไว้</div>
+                <button onClick={onClose} style={{marginTop:20,padding:"11px 32px",background:"#1a7a4a",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em"}}>ปิด</button>
+              </div>
+            ):(
+              <>
+                {/* QR */}
+                <div style={{textAlign:"center",marginBottom:16}}>
+                  <div style={{fontWeight:800,fontSize:"1.6em",color:"#1a3a2a"}}>฿{fmt(amount)}</div>
+                  {imgUrl?(
+                    <div style={{display:"inline-block",padding:10,background:"#fff",borderRadius:16,boxShadow:"0 4px 20px rgba(0,0,0,.12)",border:"3px solid #f59e0b",marginTop:8}}>
+                      <img src={imgUrl} alt="QR" width={180} height={180} style={{display:"block",borderRadius:8}}/>
+                    </div>
+                  ):(
+                    <div style={{width:200,height:200,background:"#f3f4f6",borderRadius:16,margin:"8px auto",display:"flex",alignItems:"center",justifyContent:"center",color:"#9ca3af",fontSize:"0.85em"}}>กำลังโหลด QR...</div>
+                  )}
+                  <div style={{fontSize:"0.8em",color:"#6b7280",marginTop:6}}>PromptPay: {ppId}</div>
+                </div>
+
+                {/* Name */}
+                <div style={{marginBottom:12}}>
+                  <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>ชื่อ-สกุล <span style={{color:"#ef4444"}}>*</span></div>
+                  <input value={name} onChange={e=>setName(e.target.value)} placeholder="ชื่อของคุณ"
+                    style={{width:"100%",padding:"10px 12px",border:`1.5px solid ${name.trim()?"#1a7a4a":"#e5e7eb"}`,borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none",transition:"border .15s"}}/>
+                </div>
+
+                {/* Slip */}
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:"0.85em",color:"#6b7280",marginBottom:6}}>📎 แนบ Slip การโอน <span style={{color:"#ef4444"}}>*</span></div>
+                  <input ref={slipRef} type="file" accept="image/*" capture="environment" style={{display:"none"}} onChange={handleSlip}/>
+                  {!slipPreview?(
+                    <button onClick={()=>slipRef.current?.click()} disabled={slipLoading}
+                      style={{width:"100%",padding:"18px 0",background:"#fffbeb",border:"2px dashed #f59e0b",borderRadius:12,cursor:slipLoading?"wait":"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,color:"#92400e",fontSize:"0.95em",display:"flex",flexDirection:"column",alignItems:"center",gap:6,transition:"background .15s"}}>
+                      <span style={{fontSize:28}}>{slipLoading?"⏳":"📷"}</span>
+                      <span>{slipLoading?"กำลังโหลดรูป...":"ถ่ายรูป หรือ เลือก Slip จากคลัง"}</span>
+                      {!slipLoading&&<span style={{fontSize:"0.78em",color:"#b45309",fontWeight:400}}>รองรับ JPG, PNG</span>}
+                    </button>
+                  ):(
+                    <div style={{position:"relative"}}>
+                      <img src={slipPreview} alt="slip" style={{width:"100%",borderRadius:12,border:"2px solid #22c55e",maxHeight:220,objectFit:"contain",background:"#f9fafb"}}/>
+                      <button onClick={removeSlip} style={{position:"absolute",top:8,right:8,background:"rgba(239,68,68,.9)",border:"none",borderRadius:"50%",width:30,height:30,color:"#fff",cursor:"pointer",fontWeight:700,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                      <div style={{marginTop:6,fontSize:"0.8em",color:"#15803d",textAlign:"center",display:"flex",justifyContent:"center",gap:10}}>
+                        <span>✅ แนบ Slip แล้ว</span>
+                        <span style={{cursor:"pointer",color:"#3b82f6",textDecoration:"underline"}} onClick={()=>slipRef.current?.click()}>เปลี่ยน</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {!canSend&&<div style={{background:"#fff7ed",borderRadius:8,padding:"8px 12px",fontSize:"0.82em",color:"#92400e",marginBottom:10,textAlign:"center"}}>⚠️ ใส่ชื่อ + แนบ Slip ก่อนส่ง</div>}
+
+                <button onClick={submit} disabled={!canSend||state==="sending"}
+                  style={{width:"100%",padding:"14px 0",background:canSend&&state==="idle"?"linear-gradient(135deg,#f59e0b,#d97706)":"#e5e7eb",color:canSend&&state==="idle"?"#fff":"#9ca3af",border:"none",borderRadius:12,fontWeight:800,fontSize:"1em",cursor:canSend&&state==="idle"?"pointer":"default",fontFamily:"'Sarabun',sans-serif",boxShadow:canSend?"0 4px 16px rgba(245,158,11,.4)":"none",transition:"all .2s"}}>
+                  {state==="sending"?"⏳ กำลังส่ง...":state==="error"?"❌ ส่งไม่สำเร็จ ลองใหม่":"📤 ส่ง Slip → รับ Full Version"}
+                </button>
+                <button onClick={()=>setTab("compare")} style={{width:"100%",marginTop:8,padding:"10px 0",background:"none",border:"none",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",color:"#6b7280",textDecoration:"underline"}}>
+                  📋 ดูความแตกต่าง ทดลอง vs Full
+                </button>
+              </>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-// ══ Main App ══════════════════════════════════════
 export default function App(){
   const [customers,    setCustomers]    = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -647,8 +1617,13 @@ export default function App(){
   const [editingTx,    setEditingTx]    = useState(null);
   const [pendingHelpers,setPendingHelpers]=useState([]);
   const [showSupport,  setShowSupport]  = useState(false);
+  const [showHelp,     setShowHelp]     = useState(false);
+  const [showCashOut,  setShowCashOut]  = useState(false);
+  const [showReport,   setShowReport]   = useState(false);
   const [versionCode,  setVersionCode]  = useState("");
   const [calDayInfo,   setCalDayInfo]   = useState(null);
+  const [listSort,     setListSort]     = useState("debtDesc"); // debtDesc|debtAsc|nameAsc|nameDesc|dueSoon
+  const [showHistory,  setShowHistory]  = useState(false);     // toggle paid customers
   const [backupState,  setBackupState]  = useState("idle");
   // new customer form
   const [newCustName,  setNewCustName]  = useState("");
@@ -827,6 +1802,14 @@ export default function App(){
           <span>{icon}</span><span>{label}</span>
         </button>
       ))}
+      <button onClick={()=>setShowCashOut(true)}
+        style={{width:"100%",padding:"10px 14px",marginBottom:4,background:"rgba(37,99,235,.15)",border:"1.5px solid rgba(37,99,235,.3)",borderRadius:10,color:"#93c5fd",cursor:"pointer",textAlign:"left",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",fontWeight:600,display:"flex",alignItems:"center",gap:10}}>
+        <span>🚛</span><span>รถส่งของ / ซื้อสด</span>
+      </button>
+      <button onClick={()=>setShowReport(true)}
+        style={{width:"100%",padding:"10px 14px",marginBottom:4,background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,color:"rgba(255,255,255,.8)",cursor:"pointer",textAlign:"left",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",fontWeight:600,display:"flex",alignItems:"center",gap:10}}>
+        <span>📄</span><span>รายงาน / พิมพ์</span>
+      </button>
       <div style={{position:"absolute",bottom:24,left:12,right:12}}>
         <button onClick={()=>setShowSupport(true)} style={{width:"100%",padding:"8px 14px",background:"rgba(245,158,11,.2)",border:"1px solid rgba(245,158,11,.4)",borderRadius:10,color:"#fbbf24",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",marginBottom:8}}>☕ สนับสนุนค่ากาแฟ</button>
         <button onClick={goToSettings} style={{width:"100%",padding:"8px 14px",background:"rgba(255,255,255,.1)",border:"none",borderRadius:10,color:"rgba(255,255,255,.7)",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.85em",display:"flex",alignItems:"center",gap:8}}>⚙️ ตั้งค่า{pendingHelpers.filter(h=>h.status==="pending").length>0&&<span style={{background:"#ef4444",color:"#fff",borderRadius:"50%",width:18,height:18,display:"flex",alignItems:"center",justifyContent:"center",fontSize:"0.75em",fontWeight:700}}>{pendingHelpers.filter(h=>h.status==="pending").length}</span>}</button>
@@ -844,6 +1827,11 @@ export default function App(){
           <span style={{fontSize:"0.65em",fontFamily:"'Sarabun',sans-serif",fontWeight:view===v?700:400}}>{label}</span>
         </button>
       ))}
+      <button onClick={()=>setShowCashOut(true)}
+        style={{flex:1,padding:"8px 0 6px",background:"none",border:"none",cursor:"pointer",color:"#2563eb",display:"flex",flexDirection:"column",alignItems:"center",gap:1}}>
+        <span style={{fontSize:18}}>🚛</span>
+        <span style={{fontSize:"0.65em",fontFamily:"'Sarabun',sans-serif",fontWeight:600}}>ซื้อสด</span>
+      </button>
     </div>
   );
 
@@ -1086,7 +2074,10 @@ export default function App(){
                 <Avatar c={c} size={64}/>
                 <PhotoUploadBtn customerId={c.id} onUploaded={url=>handlePhotoUploaded(c.id,url)}/>
               </div>
-              <div><div style={{fontWeight:700,fontSize:"1.2em"}}>{c.name}</div><div style={{opacity:.8,fontSize:"0.9em"}}>📞 {c.phone||"ไม่มีเบอร์"}</div></div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:"1.2em"}}>{c.name}</div>
+                <PhoneEdit phone={c.phone} onSave={phone=>handleSavePhone(c.id,phone)}/>
+              </div>
             </div>
           </div>
           <div style={{padding:16}}>
@@ -1104,6 +2095,8 @@ export default function App(){
               {c.totalDebt>0&&<button onClick={()=>setShowQR(true)} style={{flex:1,padding:"12px 8px",background:"linear-gradient(135deg,#06c755,#04a344)",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",boxShadow:"0 4px 14px rgba(6,199,85,.35)"}}>💳 QR รับเงิน</button>}
               <button onClick={()=>{setNewDebt({customer:c,items:[{name:"",price:""}],dueDate:"",interestRate:""});setView("addDebt");}} style={{flex:1,padding:"12px 8px",background:"#1a7a4a",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em"}}>+ บันทึกหนี้</button>
             </div>
+            {/* Note */}
+            <NoteSection c={c} onSave={(note)=>handleSaveNote(c.id,note)}/>
             <div style={{fontWeight:700,marginBottom:10,color:"#1a3a2a"}}>ประวัติการซื้อ</div>
             {txList.length===0&&<div style={{color:"#9ca3af",textAlign:"center",padding:24}}>ยังไม่มีประวัติ</div>}
             {txList.map(tx=>{
@@ -1274,41 +2267,151 @@ export default function App(){
   );
 
   // ── LIST ────────────────────────────────────
-  if(view==="list") return(
-    <div style={{...containerStyle}}>
-      {isDesktop&&<SidebarNav/>}
-      <div style={{flex:1,paddingBottom:isDesktop?0:80}}>
-        {toast&&<Toast msg={toast.msg} icon={toast.icon}/>}
-        <div style={{background:"#1a3a2a",color:"#fff",padding:"20px 16px 16px",position:"sticky",top:0,zIndex:10}}>
-          <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12}}>
-            {!isDesktop&&<button onClick={()=>setView("dashboard")} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer"}}>←</button>}
-            <span style={{fontWeight:700,fontSize:"1.1em",flex:1}}>ลูกหนี้ทั้งหมด ({customers.length} คน)</span>
-            <button onClick={()=>loadAll(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em",fontWeight:600}}>{refreshing?"⏳":"🔄"} Refresh</button>
-          </div>
-          <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 ค้นหาชื่อ..." style={{width:"100%",padding:"10px 14px",borderRadius:12,border:"none",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none"}}/>
-        </div>
-        <div style={{padding:16,display:isDesktop?"grid":"block",gridTemplateColumns:isDesktop?"1fr 1fr":undefined,gap:isDesktop?12:undefined}}>
-          {filtered.map(c=>(
-            <div key={c.id} onClick={()=>{setSelectedCid(c.id);setView("customer");}} style={{background:"#fff",borderRadius:14,padding:14,marginBottom:isDesktop?0:10,boxShadow:"0 2px 8px rgba(0,0,0,.06)",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-              <Avatar c={c} size={48}/>
-              <div style={{flex:1}}><div style={{fontWeight:700}}>{c.name}</div><div style={{fontSize:"0.85em",color:"#6b7280"}}>{c.phone||"ไม่มีเบอร์"}</div></div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontWeight:800,color:c.totalDebt>0?"#ef4444":"#22c55e"}}>฿{fmt(c.totalDebt)}</div>
-                {c.dueDate&&c.totalDebt>0&&<div style={{fontSize:"0.78em",color:c.dueDate<=TODAY?"#ef4444":"#6b7280"}}>{thDate(c.dueDate)}</div>}
-              </div>
+  if(view==="list") {
+    // ── Sort & filter logic ──
+    const sortFns = {
+      debtDesc: (a,b) => b.totalDebt - a.totalDebt,
+      debtAsc:  (a,b) => a.totalDebt - b.totalDebt,
+      nameAsc:  (a,b) => a.name.localeCompare(b.name,"th"),
+      nameDesc: (a,b) => b.name.localeCompare(a.name,"th"),
+      dueSoon:  (a,b) => {
+        if(!a.dueDate&&!b.dueDate) return 0;
+        if(!a.dueDate) return 1;
+        if(!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      },
+    };
+    const allFiltered     = customers.filter(c=>c.name.includes(searchQ));
+    const activeDebtors   = allFiltered.filter(c=>c.totalDebt>0).sort(sortFns[listSort]);
+    const paidCustomers   = allFiltered.filter(c=>c.totalDebt===0).sort(sortFns["nameAsc"]);
+    const sortLabels = {
+      debtDesc:"฿ มากสุด",debtAsc:"฿ น้อยสุด",
+      nameAsc:"ก–ฮ",nameDesc:"ฮ–ก",dueSoon:"ใกล้ทวง",
+    };
+    const sortKeys = Object.keys(sortLabels);
+
+    const CustomerCard = ({c}) => {
+      const isOverdue = c.dueDate && c.dueDate <= TODAY && c.totalDebt > 0;
+      return (
+        <div onClick={()=>{setSelectedCid(c.id);setView("customer");}}
+          style={{background:"#fff",borderRadius:14,padding:14,marginBottom:isDesktop?0:10,
+            boxShadow:isOverdue?"0 2px 10px rgba(239,68,68,.2)":"0 2px 8px rgba(0,0,0,.06)",
+            display:"flex",alignItems:"center",gap:12,cursor:"pointer",
+            borderLeft:`4px solid ${isOverdue?"#ef4444":c.totalDebt>0?"#f59e0b":"#22c55e"}`}}>
+          <Avatar c={c} size={48}/>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700}}>{c.name}</div>
+            <div style={{fontSize:"0.82em",color:"#6b7280",display:"flex",gap:8,flexWrap:"wrap"}}>
+              {c.phone&&<span>📞 {c.phone}</span>}
+              {c.dueDate&&c.totalDebt>0&&(
+                <span style={{color:isOverdue?"#ef4444":"#9ca3af"}}>
+                  {isOverdue?"🔴 เกิน":"⏰"} {thDate(c.dueDate)}
+                </span>
+              )}
             </div>
-          ))}
-          {filtered.length===0&&<div style={{textAlign:"center",color:"#9ca3af",padding:40,gridColumn:"1/-1"}}>ไม่พบลูกค้า</div>}
-        </div>
-        {!isDesktop&&(
-          <div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 32px)",maxWidth:388}}>
-            <button onClick={()=>{setNewDebt({customer:null,items:[{name:"",price:""}],dueDate:"",interestRate:""});setView("addDebt");}} style={{width:"100%",padding:"14px 0",background:"#1a7a4a",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.05em",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 20px rgba(26,122,74,.4)"}}>+ บันทึกหนี้ใหม่</button>
+            {c.note&&(
+              <div style={{fontSize:"0.76em",color:"#92400e",background:"#fffbeb",borderRadius:6,padding:"2px 8px",marginTop:4,display:"inline-block",maxWidth:"95%",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",border:"1px solid #fde68a"}}>
+                📝 {c.note.length>38?c.note.slice(0,38)+"…":c.note}
+              </div>
+            )}
           </div>
-        )}
+          <div style={{textAlign:"right"}}>
+            <div style={{fontWeight:800,fontSize:"1.05em",
+              color:c.totalDebt>0?(isOverdue?"#ef4444":"#e07b39"):"#22c55e"}}>
+              ฿{fmt(c.totalDebt)}
+            </div>
+            {c.totalDebt===0&&<div style={{fontSize:"0.72em",color:"#22c55e"}}>✅ ชำระครบ</div>}
+          </div>
+        </div>
+      );
+    };
+
+    return(
+      <div style={{...containerStyle}}>
+        {isDesktop&&<SidebarNav/>}
+        <div style={{flex:1,paddingBottom:isDesktop?0:80}}>
+          {toast&&<Toast msg={toast.msg} icon={toast.icon}/>}
+
+          {/* Header */}
+          <div style={{background:"#1a3a2a",color:"#fff",padding:"20px 16px 12px",position:"sticky",top:0,zIndex:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:10}}>
+              {!isDesktop&&<button onClick={()=>setView("dashboard")} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer"}}>←</button>}
+              <span style={{fontWeight:700,fontSize:"1.1em",flex:1}}>
+                💸 ค้างชำระ <span style={{opacity:.7,fontWeight:400,fontSize:"0.85em"}}>({activeDebtors.length} ราย)</span>
+              </span>
+              <button onClick={()=>loadAll(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em",fontWeight:600}}>
+                {refreshing?"⏳":"🔄"}
+              </button>
+            </div>
+            {/* Search */}
+            <input value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="🔍 ค้นหาชื่อ..."
+              style={{width:"100%",padding:"9px 14px",borderRadius:12,border:"none",background:"rgba(255,255,255,.15)",color:"#fff",fontFamily:"'Sarabun',sans-serif",fontSize:"1em",boxSizing:"border-box",outline:"none",marginBottom:10}}/>
+            {/* Sort bar */}
+            <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:2}}>
+              <span style={{color:"rgba(255,255,255,.5)",fontSize:"0.78em",flexShrink:0,lineHeight:"28px"}}>เรียง:</span>
+              {sortKeys.map(k=>(
+                <button key={k} onClick={()=>setListSort(k)}
+                  style={{padding:"4px 12px",borderRadius:20,border:"none",cursor:"pointer",flexShrink:0,fontFamily:"'Sarabun',sans-serif",fontSize:"0.78em",fontWeight:listSort===k?700:400,
+                    background:listSort===k?"#fff":"rgba(255,255,255,.15)",
+                    color:listSort===k?"#1a3a2a":"rgba(255,255,255,.75)"}}>
+                  {sortLabels[k]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{padding:16}}>
+            {/* Active debtors */}
+            {activeDebtors.length===0&&!searchQ&&(
+              <div style={{textAlign:"center",padding:40,color:"#9ca3af"}}>
+                <div style={{fontSize:48,marginBottom:12}}>✅</div>
+                <div style={{fontWeight:700,color:"#22c55e",fontSize:"1.1em"}}>ไม่มียอดค้างชำระ!</div>
+                <div style={{fontSize:"0.85em",marginTop:6}}>ลูกค้าทุกคนชำระครบแล้ว 🎉</div>
+              </div>
+            )}
+            {activeDebtors.length===0&&searchQ&&(
+              <div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>ไม่พบลูกค้าที่ค้างชำระ "{searchQ}"</div>
+            )}
+            <div style={{display:isDesktop?"grid":"block",gridTemplateColumns:isDesktop?"1fr 1fr":undefined,gap:isDesktop?12:undefined}}>
+              {activeDebtors.map(c=><CustomerCard key={c.id} c={c}/>)}
+            </div>
+
+            {/* Summary bar */}
+            {activeDebtors.length>0&&(
+              <div style={{background:"#fff",borderRadius:12,padding:"12px 16px",marginTop:8,marginBottom:16,display:"flex",justifyContent:"space-between",alignItems:"center",boxShadow:"0 2px 8px rgba(0,0,0,.06)"}}>
+                <span style={{color:"#6b7280",fontSize:"0.85em"}}>รวมยอดค้างทั้งหมด</span>
+                <span style={{fontWeight:800,fontSize:"1.15em",color:"#ef4444"}}>฿{fmt(activeDebtors.reduce((s,c)=>s+c.totalDebt,0))}</span>
+              </div>
+            )}
+
+            {/* History toggle */}
+            <button onClick={()=>setShowHistory(h=>!h)}
+              style={{width:"100%",padding:"11px 16px",background:showHistory?"#f0fdf4":"#f9fafb",border:`1.5px solid ${showHistory?"#22c55e":"#e5e7eb"}`,borderRadius:12,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,fontSize:"0.9em",color:showHistory?"#15803d":"#6b7280",display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:showHistory?12:0}}>
+              <span>📂 ประวัติลูกหนี้ที่ชำระครบแล้ว ({paidCustomers.length} ราย)</span>
+              <span style={{fontSize:"1.1em"}}>{showHistory?"▲":"▼"}</span>
+            </button>
+
+            {showHistory&&(
+              <div>
+                {paidCustomers.length===0&&<div style={{textAlign:"center",padding:20,color:"#9ca3af",fontSize:"0.85em"}}>ยังไม่มีประวัติ</div>}
+                <div style={{display:isDesktop?"grid":"block",gridTemplateColumns:isDesktop?"1fr 1fr":undefined,gap:isDesktop?10:undefined}}>
+                  {paidCustomers.map(c=><CustomerCard key={c.id} c={c}/>)}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* FAB */}
+          {!isDesktop&&(
+            <div style={{position:"fixed",bottom:70,left:"50%",transform:"translateX(-50%)",width:"calc(100% - 32px)",maxWidth:388}}>
+              <button onClick={()=>{setNewDebt({customer:null,items:[{name:"",price:""}],dueDate:"",interestRate:""});setView("addDebt");}} style={{width:"100%",padding:"14px 0",background:"#1a7a4a",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.05em",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",boxShadow:"0 4px 20px rgba(26,122,74,.4)"}}>+ บันทึกหนี้ใหม่</button>
+            </div>
+          )}
+        </div>
+        {!isDesktop&&<BottomNav/>}
       </div>
-      {!isDesktop&&<BottomNav/>}
-    </div>
-  );
+    );
+  }
 
   // ── CALENDAR ──────────────────────────────────
   if(view==="calendar") return(
@@ -1364,7 +2467,10 @@ export default function App(){
       {isDesktop&&<SidebarNav/>}
       <div style={{flex:1,paddingBottom:isDesktop?0:80}}>
         {toast&&<Toast msg={toast.msg} icon={toast.icon}/>}
-        {showSupport&&<SupportPage settings={settings} onClose={()=>setShowSupport(false)}/>}
+        {showSupport&&<SupportPage settings={settings} onClose={()=>setShowSupport(false)}/> }
+        {showHelp&&<HelpModal onClose={()=>setShowHelp(false)}/>}
+        {showCashOut&&<CashOutView onClose={()=>setShowCashOut(false)} showToast={showToast} settings={settings}/>}
+        {showReport&&<ReportView customers={customers} transactions={transactions} onClose={()=>setShowReport(false)} settings={settings}/>}
         {showQR&&<QRModal c={customers[0]||{name:"?",totalDebt:0,id:0}} settings={settings} onPaid={()=>{}} onClose={()=>setShowQR(false)}/>}
         <div style={{background:"linear-gradient(135deg,#1a3a2a 0%,#1a7a4a 100%)",color:"#fff",padding:"24px 16px 32px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,.06)"}}/>
@@ -1374,6 +2480,12 @@ export default function App(){
               <div style={{fontSize:"0.7em",opacity:.45}}>{lastSync?`🌐 ${lastSync}`:""} · {APP_VERSION}{settings.isFullVersion?" 🎉":""}</div>
             </div>
             <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={()=>setShowReport(true)}
+                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"6px 12px",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.78em",fontWeight:700,color:"#fff",display:"flex",alignItems:"center",gap:4}}>
+                📄 รายงาน
+              </button>
+              <button onClick={()=>setShowHelp(true)}
+                style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:"50%",width:38,height:38,cursor:"pointer",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:700}}>?</button>
               <button onClick={()=>setShowSupport(true)} style={{background:"rgba(245,158,11,.3)",border:"1px solid rgba(245,158,11,.5)",borderRadius:10,padding:"6px 10px",color:"#fbbf24",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.78em",fontWeight:600}}>☕ สนับสนุน</button>
               <button onClick={()=>loadAll(true)} disabled={refreshing} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"7px 12px",color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.8em",fontWeight:700,opacity:refreshing?.6:1}}>
                 <span style={{display:"inline-block",animation:refreshing?"spin 1s linear infinite":"none"}}>🔄</span> {refreshing?"...":"Refresh"}

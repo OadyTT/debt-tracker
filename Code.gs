@@ -364,31 +364,289 @@ function notifyLine(d) {
 // ════════════════════════════════════════════════
 //  LINE Webhook — captures UIDs of people who message the bot
 // ════════════════════════════════════════════════
+// ════════════════════════════════════════════════
+//  LINE Reply helper
+// ════════════════════════════════════════════════
+function replyLine(replyToken, message) {
+  const token = getChannelToken();
+  if (!token || !replyToken) return;
+  try {
+    UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply", {
+      method: "post",
+      headers: { "Authorization": "Bearer " + token, "Content-Type": "application/json" },
+      payload: JSON.stringify({ replyToken, messages: [{ type: "text", text: message }] }),
+      muteHttpExceptions: true
+    });
+  } catch(e) { Logger.log("replyLine error: " + e.message); }
+}
+
+function thaiDate(d) {
+  if (!d) return "";
+  try {
+    const dt = new Date(d);
+    const thMonths = ["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
+    return dt.getDate() + " " + thMonths[dt.getMonth()] + " " + (dt.getFullYear() + 543);
+  } catch { return d; }
+}
+
+function numFmt(n) { return Number(n).toLocaleString("th-TH"); }
+
+// ════════════════════════════════════════════════
+//  LINE Chatbot Help Text
+// ════════════════════════════════════════════════
+function getHelpText(uid) {
+  return "🏪 ระบบลูกหนี้ร้านอ้อ" +
+    "\n══════════════════" +
+    "\n📋 คำสั่งสำหรับเจ้าหนี้:" +
+    "\n" +
+    "\n💾 บันทึกหนี้ใหม่:" +
+    "\n  บันทึก [ชื่อ] [฿] [รายการ]" +
+    "\n  เช่น: บันทึก สมศรี 200 ข้าวสาร" +
+    "\n" +
+    "\n💰 รับชำระเงิน:" +
+    "\n  รับ [ชื่อ] [฿]" +
+    "\n  เช่น: รับ สมศรี 500" +
+    "\n" +
+    "\n🔍 เช็คยอดค้าง:" +
+    "\n  ยอด [ชื่อ]" +
+    "\n  เช่น: ยอด สมศรี" +
+    "\n" +
+    "\n📊 รายชื่อลูกหนี้ทั้งหมด:" +
+    "\n  รายการ" +
+    "\n" +
+    "\n📅 ดูวันทวงวันนี้:" +
+    "\n  วันนี้" +
+    "\n══════════════════" +
+    "\n🆔 LINE UID ของคุณ:" +
+    "\n" + uid;
+}
+
+// ════════════════════════════════════════════════
+//  handleLineWebhook — Full chatbot with commands
+// ════════════════════════════════════════════════
 function handleLineWebhook(body) {
-  const events=body.events||[];
-  events.forEach(ev=>{
-    const uid=ev.source&&ev.source.userId;
-    if(!uid) return;
-    if(ev.type==="follow"||ev.type==="message") {
+  const events = body.events || [];
+  events.forEach(ev => {
+    const uid = ev.source && ev.source.userId;
+    if (!uid) return;
+
+    // ── เพิ่มเพื่อน (Follow event) ──
+    if (ev.type === "follow") {
       addPendingHelper(uid);
-      // Reply with instructions if message event
-      if(ev.type==="message"&&ev.replyToken) {
-        const token=getChannelToken();
-        if(token){
-          UrlFetchApp.fetch("https://api.line.me/v2/bot/message/reply",{
-            method:"post",
-            headers:{"Authorization":"Bearer "+token,"Content-Type":"application/json"},
-            payload:JSON.stringify({
-              replyToken:ev.replyToken,
-              messages:[{type:"text",text:"✅ ระบบได้รับข้อมูลของคุณแล้ว!\n\nLINE User ID: "+uid+"\n\nรอ Admin อนุมัติให้คุณเป็นผู้ช่วย..."}]
-            }),
-            muteHttpExceptions:true
-          });
-        }
+      replyLine(ev.replyToken,
+        "👋 สวัสดีครับ! ระบบลูกหนี้ร้านอ้อ" +
+        "\n══════════════════" +
+        "\n🆔 LINE User ID ของคุณ:" +
+        "\n" + uid +
+        "\n══════════════════" +
+        "\n📌 ส่ง ID นี้ให้ Admin เพื่อขอสิทธิ์" +
+        "\nหรือพิมพ์ ช่วยเหลือ เพื่อดูคำสั่ง"
+      );
+      return;
+    }
+
+    // ── ข้อความ (Message event) ──
+    if (ev.type === "message" && ev.message && ev.message.type === "text") {
+      const text = ev.message.text.trim();
+      const cfg  = getSettings().settings;
+      const adminUids = cfg.adminLineUids || [];
+      const isAdmin   = adminUids.includes(uid);
+
+      if (isAdmin) {
+        handleAdminCommand(uid, text, ev.replyToken, cfg);
+      } else {
+        // ไม่ใช่ Admin — แจ้ง UID และขึ้น pending
+        addPendingHelper(uid);
+        replyLine(ev.replyToken,
+          "📋 LINE User ID ของคุณ:" +
+          "\n" + uid +
+          "\n══════════════════" +
+          "\n⏳ ส่ง ID นี้ให้ Admin เพื่อขอรับแจ้งเตือน" +
+          "\nหลังอนุมัติแล้ว คุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้"
+        );
       }
     }
   });
   return ContentService.createTextOutput("OK");
+}
+
+// ════════════════════════════════════════════════
+//  Admin Command Router
+// ════════════════════════════════════════════════
+function handleAdminCommand(uid, text, replyToken, cfg) {
+  const lower = text.toLowerCase().replace(/\s+/g," ").trim();
+
+  // ── ช่วยเหลือ ──
+  if (lower === "ช่วยเหลือ" || lower === "help" || lower === "?" || lower === "คำสั่ง") {
+    replyLine(replyToken, getHelpText(uid));
+    return;
+  }
+
+  // ── รายการ / ลูกหนี้ ──
+  if (lower === "รายการ" || lower === "ลูกหนี้" || lower === "ทั้งหมด") {
+    const data    = getData();
+    const debtors = (data.customers||[]).filter(c => c.totalDebt > 0)
+                    .sort((a,b) => b.totalDebt - a.totalDebt);
+    if (debtors.length === 0) {
+      replyLine(replyToken, "✅ ไม่มีลูกหนี้ค้างในขณะนี้");
+      return;
+    }
+    const totalAll = debtors.reduce((s,c) => s + c.totalDebt, 0);
+    let msg = "📊 ลูกหนี้ทั้งหมด (" + debtors.length + " ราย)" +
+              "\n══════════════════";
+    debtors.forEach((c, i) => {
+      msg += "\n" + (i+1) + ". 👤 " + c.name;
+      msg += "\n    💰 ฿" + numFmt(c.totalDebt);
+      if (c.dueDate) {
+        const isOverdue = c.dueDate < new Date().toISOString().slice(0,10);
+        msg += " | " + (isOverdue ? "🔴" : "⏰") + " " + thaiDate(c.dueDate);
+      }
+    });
+    msg += "\n══════════════════" +
+           "\n💵 รวมค้างทั้งหมด: ฿" + numFmt(totalAll);
+    replyLine(replyToken, msg);
+    return;
+  }
+
+  // ── วันนี้ — ดูลูกหนี้ที่ครบกำหนดวันนี้ ──
+  if (lower === "วันนี้" || lower === "ทวงวันนี้") {
+    const today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+    const data  = getData();
+    const due   = (data.customers||[]).filter(c => c.dueDate === today && c.totalDebt > 0);
+    if (due.length === 0) {
+      replyLine(replyToken, "✅ ไม่มีลูกหนี้ครบกำหนดวันนี้
+📅 " + thaiDate(today));
+      return;
+    }
+    let msg = "🔴 ครบกำหนดวันนี้ (" + due.length + " ราย)" +
+              "\n📅 " + thaiDate(today) +
+              "\n══════════════════";
+    due.forEach(c => {
+      msg += "\n👤 " + c.name + " — ฿" + numFmt(c.totalDebt);
+    });
+    msg += "\n══════════════════" +
+           "\n💵 รวม: ฿" + numFmt(due.reduce((s,c)=>s+c.totalDebt,0));
+    replyLine(replyToken, msg);
+    return;
+  }
+
+  // ── ยอด [ชื่อ] — เช็คยอดลูกค้า ──
+  if (lower.startsWith("ยอด ") || lower.startsWith("เช็ค ") || lower.startsWith("ดู ")) {
+    const name   = text.split(" ").slice(1).join(" ").trim();
+    const data   = getData();
+    const c      = (data.customers||[]).find(x => x.name.includes(name));
+    if (!c) { replyLine(replyToken, '❌ ไม่พบลูกค้า "' + name + '"\nลองพิมพ์ รายการ เพื่อดูชื่อทั้งหมด'); return; }
+    const txList = (data.transactions||[]).filter(t => t.customerId === c.id && !t.paid);
+    let msg = "👤 " + c.name + " — เจ้าหนี้: ร้านอ้อ" +
+              "\n══════════════════";
+    if (c.totalDebt === 0) {
+      msg += "\n✅ ไม่มียอดค้าง";
+    } else {
+      msg += "\n💰 ยอดค้างรวม: ฿" + numFmt(c.totalDebt);
+      if (c.dueDate) {
+        const isOv = c.dueDate < new Date().toISOString().slice(0,10);
+        msg += "\n" + (isOv ? "🔴 เกินกำหนด:" : "⏰ ครบกำหนด:") + " " + thaiDate(c.dueDate);
+      }
+      if (txList.length > 0) {
+        msg += "\n──────────────────\nรายการที่ค้าง:";
+        txList.slice(0,5).forEach(t => {
+          msg += "\n• " + thaiDate(t.date) + " — ฿" + numFmt(t.total);
+          if (t.items && t.items.length > 0)
+            msg += " (" + t.items.slice(0,2).map(i=>i.name).join(", ") + (t.items.length>2?"...":"") + ")";
+        });
+        if (txList.length > 5) msg += "\n... และอีก " + (txList.length-5) + " รายการ";
+      }
+    }
+    msg += "\n══════════════════";
+    replyLine(replyToken, msg);
+    return;
+  }
+
+  // ── บันทึก [ชื่อ] [฿] [รายการ] ──
+  if (lower.startsWith("บันทึก ") || lower.startsWith("จด ") || lower.startsWith("เพิ่ม ")) {
+    const parts    = text.split(" ").slice(1);
+    if (parts.length < 2) {
+      replyLine(replyToken, "❌ รูปแบบไม่ถูกต้อง\nต้องใช้: บันทึก [ชื่อ] [฿] [รายการ]\nเช่น: บันทึก สมศรี 200 ข้าวสาร");
+      return;
+    }
+    const custName = parts[0];
+    const amount   = parseFloat(parts[1]);
+    const itemName = parts.slice(2).join(" ") || "รายการสินค้า";
+    if (isNaN(amount) || amount <= 0) {
+      replyLine(replyToken, "❌ จำนวนเงินไม่ถูกต้อง\nเช่น: บันทึก สมศรี 200 ข้าวสาร");
+      return;
+    }
+    const data = getData();
+    let c = (data.customers||[]).find(x => x.name.includes(custName));
+    if (!c) {
+      // สร้างลูกค้าใหม่
+      const res = addCustomer({ name: custName, phone: "", txId: Date.now() });
+      c = (res.customers||[]).find(x => x.name === custName) || { id: Date.now(), name: custName, totalDebt: 0 };
+    }
+    const today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+    addDebt({ customerId: c.id, date: today, items: [{name: itemName, price: amount}], total: amount, dueDate: "", interestRate: 0 });
+    const newDebt  = (c.totalDebt||0) + amount;
+    const msg = "✅ บันทึกหนี้แล้ว!" +
+                "\n══════════════════" +
+                "\n🏪 เจ้าหนี้: ร้านอ้อ" +
+                "\n👤 ลูกหนี้:  " + custName +
+                "\n📅 วันที่:   " + thaiDate(today) +
+                "\n──────────────────" +
+                "\n📝 " + itemName + " — ฿" + numFmt(amount) +
+                "\n──────────────────" +
+                "\n💰 รวมครั้งนี้: ฿" + numFmt(amount) +
+                "\n📊 ยอดค้างรวม: ฿" + numFmt(newDebt) +
+                "\n══════════════════" +
+                "\n[บันทึกโดย LINE OA]";
+    replyLine(replyToken, msg);
+    return;
+  }
+
+  // ── รับ / จ่าย / ชำระ [ชื่อ] [฿] ──
+  if (lower.startsWith("รับ ") || lower.startsWith("จ่าย ") || lower.startsWith("ชำระ ")) {
+    const parts  = text.split(" ").slice(1);
+    if (parts.length < 2) {
+      replyLine(replyToken, "❌ รูปแบบ: รับ [ชื่อ] [฿]\nเช่น: รับ สมศรี 500");
+      return;
+    }
+    const custName = parts[0];
+    const amount   = parseFloat(parts[1]);
+    if (isNaN(amount) || amount <= 0) {
+      replyLine(replyToken, "❌ จำนวนเงินไม่ถูกต้อง");
+      return;
+    }
+    const data = getData();
+    const c    = (data.customers||[]).find(x => x.name.includes(custName));
+    if (!c || c.totalDebt === 0) {
+      replyLine(replyToken, '❌ ไม่พบ "' + custName + '" หรือไม่มียอดค้าง');
+      return;
+    }
+    const fullPay   = amount >= c.totalDebt;
+    const remaining = Math.max(0, c.totalDebt - amount);
+    markPaid({ customerId: c.id, amount, fullPay });
+    const today = Utilities.formatDate(new Date(), "Asia/Bangkok", "yyyy-MM-dd");
+    const msg = "💰 รับชำระแล้ว!" +
+                "\n══════════════════" +
+                "\n🏪 เจ้าหนี้: ร้านอ้อ" +
+                "\n👤 ลูกหนี้:  " + c.name +
+                "\n📅 วันที่:   " + thaiDate(today) +
+                "\n──────────────────" +
+                "\n💵 รับชำระ:   ฿" + numFmt(amount) +
+                "\n📊 ยอดเดิม:   ฿" + numFmt(c.totalDebt) +
+                "\n──────────────────" +
+                (fullPay
+                  ? "\n✅ ชำระครบแล้ว! ไม่มียอดค้าง"
+                  : "\n⚠️ ยังค้างอยู่: ฿" + numFmt(remaining)) +
+                "\n══════════════════";
+    replyLine(replyToken, msg);
+    return;
+  }
+
+  // ── ไม่รู้จักคำสั่ง ──
+  replyLine(replyToken,
+    "❓ ไม่เข้าใจคำสั่ง\nพิมพ์ ช่วยเหลือ เพื่อดูคำสั่งทั้งหมด" +
+    "\n\n🆔 UID: " + uid
+  );
 }
 
 function addPendingHelper(uid) {

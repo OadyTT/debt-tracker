@@ -80,27 +80,123 @@ function calcInterest(tx){
   return Math.round(tx.total*(tx.interestRate/100/30)*days);
 }
 
+// ══ Notification Builders ════════════════════════
+// แยกชัดเจน เจ้าหนี้ / ลูกหนี้
+
+const SHOP_NAME = "ร้านอ้อ";
+
+function lineDebtMsg(c, items, total, due, ir) {
+  // สำหรับ เจ้าหนี้ (admin)
+  const itemLines = items.map(i=>`• ${i.name} — ฿${fmt(i.price)}`).join("\n");
+  const newTotal  = (c.totalDebt||0) + total;
+  return (
+    `📝 บันทึกหนี้ใหม่ — ${SHOP_NAME}\n` +
+    `══════════════════\n` +
+    `🏪 เจ้าหนี้: ${SHOP_NAME}\n` +
+    `👤 ลูกหนี้: ${c.name}\n` +
+    `📅 วันที่:  ${thDate(TODAY)}\n` +
+    (due ? `⏰ ทวง:    ${thDate(due)}\n` : "") +
+    (ir > 0 ? `💹 ดอกเบี้ย: ${ir}%/เดือน\n` : "") +
+    `──────────────────\n` +
+    `${itemLines}\n` +
+    `══════════════════\n` +
+    `💰 รวมครั้งนี้:  ฿${fmt(total)}\n` +
+    `📊 ยอดค้างรวม: ฿${fmt(newTotal)}\n` +
+    `══════════════════`
+  );
+}
+
+function linePaidMsg(c, amt) {
+  // สำหรับ เจ้าหนี้ (admin)
+  const remaining = Math.max(0, (c.totalDebt||0) - amt);
+  return (
+    `💰 รับชำระแล้ว — ${SHOP_NAME}\n` +
+    `══════════════════\n` +
+    `🏪 เจ้าหนี้: ${SHOP_NAME}\n` +
+    `👤 ลูกหนี้: ${c.name}\n` +
+    `📅 วันที่:  ${thDate(TODAY)}\n` +
+    `──────────────────\n` +
+    `💵 รับชำระ:  ฿${fmt(amt)}\n` +
+    `📊 ยอดเดิม:  ฿${fmt(c.totalDebt||0)}\n` +
+    `══════════════════\n` +
+    (remaining > 0
+      ? `⚠️ ยังค้างอยู่: ฿${fmt(remaining)}`
+      : `✅ ชำระครบแล้ว! ไม่มียอดค้าง`)
+  );
+}
+
 // Email builders
-function buildDebtEmail(c,items,total,due,interest){
-  return{
-    subject:`📝 บันทึกหนี้ — ${c.name} ฿${fmt(total)}`,
-    htmlBody:`<h3 style="color:#1a3a2a;">📝 บันทึกหนี้ใหม่</h3>
-      <p><b>ลูกค้า:</b> ${c.name} | <b>วันที่:</b> ${TODAY}${due?` | <b>ทวง:</b> ${due}`:""}</p>
-      <ul>${items.map(i=>`<li>${i.name} — ฿${fmt(i.price)}</li>`).join("")}</ul>
-      <p><b>รวม: ฿${fmt(total)}</b>${interest?` (ดอกเบี้ย ${interest}%/เดือน)`:""}</p>
-      <p style="color:#ef4444;"><b>ยอดค้างรวม: ฿${fmt((c.totalDebt||0)+total)}</b></p>`,
-    body:`บันทึกหนี้ ${c.name} ฿${fmt(total)}`
+function buildDebtEmail(c, items, total, due, interest) {
+  const newTotal = (c.totalDebt||0) + total;
+  const rows = items.map(i=>`<tr><td style="padding:4px 8px;">${i.name}</td><td style="padding:4px 8px;text-align:right;font-weight:600;">฿${fmt(i.price)}</td></tr>`).join("");
+  return {
+    subject: `📝 [ร้านอ้อ] บันทึกหนี้ใหม่ — ${c.name} ฿${fmt(total)}`,
+    htmlBody: `
+      <div style="font-size:13px;border:2px solid #1a3a2a;border-radius:12px;overflow:hidden;max-width:460px;">
+        <div style="background:#1a3a2a;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;">
+          <span style="font-weight:800;font-size:15px;">📝 บันทึกหนี้ใหม่</span>
+          <span style="opacity:.7;">${thDate(TODAY)}</span>
+        </div>
+        <div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="color:#6b7280;padding:3px 0;">🏪 เจ้าหนี้</td><td style="font-weight:700;text-align:right;">${SHOP_NAME}</td></tr>
+            <tr><td style="color:#6b7280;padding:3px 0;">👤 ลูกหนี้</td><td style="font-weight:700;text-align:right;color:#1a3a2a;">${c.name}</td></tr>
+            ${due?`<tr><td style="color:#6b7280;padding:3px 0;">⏰ ครบกำหนด</td><td style="text-align:right;color:#f59e0b;">${thDate(due)}</td></tr>`:""}
+            ${interest>0?`<tr><td style="color:#6b7280;padding:3px 0;">💹 ดอกเบี้ย</td><td style="text-align:right;color:#f59e0b;">${interest}% / เดือน</td></tr>`:""}
+          </table>
+        </div>
+        <div style="padding:12px 16px;">
+          <div style="font-weight:700;margin-bottom:8px;color:#374151;">รายการสินค้า</div>
+          <table style="width:100%;border-collapse:collapse;">${rows}</table>
+        </div>
+        <div style="background:#fff7ed;padding:12px 16px;border-top:2px solid #f59e0b;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="font-weight:700;">💰 รวมครั้งนี้</td><td style="text-align:right;font-weight:800;font-size:16px;color:#f59e0b;">฿${fmt(total)}</td></tr>
+            <tr><td style="color:#6b7280;padding-top:4px;">ยอดค้างเดิม</td><td style="text-align:right;color:#6b7280;">฿${fmt(c.totalDebt||0)}</td></tr>
+            <tr><td style="font-weight:800;padding-top:6px;border-top:1px dashed #e5e7eb;">📊 ยอดค้างรวมใหม่</td><td style="text-align:right;font-weight:800;font-size:17px;color:#ef4444;border-top:1px dashed #e5e7eb;">฿${fmt(newTotal)}</td></tr>
+          </table>
+        </div>
+      </div>`,
+    body: `[ร้านอ้อ] บันทึกหนี้
+ลูกหนี้: ${c.name}
+รวม: ฿${fmt(total)}
+ยอดค้างรวม: ฿${fmt(newTotal)}`
   };
 }
-function buildPaidEmail(c,amt){
-  const r=Math.max(0,(c.totalDebt||0)-amt);
-  return{
-    subject:`💰 รับชำระ — ${c.name} ฿${fmt(amt)}`,
-    htmlBody:`<h3 style="color:#15803d;">💰 รับชำระแล้ว</h3>
-      <p><b>ลูกค้า:</b> ${c.name}</p>
-      <p><b>จำนวน: ฿${fmt(amt)}</b></p>
-      <p style="color:${r>0?"#ef4444":"#15803d"};"><b>ยอดคงเหลือ: ${r>0?"฿"+fmt(r):"✅ ชำระครบ!"}</b></p>`,
-    body:`รับชำระ ${c.name} ฿${fmt(amt)}`
+
+function buildPaidEmail(c, amt) {
+  const remaining = Math.max(0, (c.totalDebt||0) - amt);
+  return {
+    subject: `💰 [ร้านอ้อ] รับชำระ — ${c.name} ฿${fmt(amt)}`,
+    htmlBody: `
+      <div style="font-size:13px;border:2px solid #22c55e;border-radius:12px;overflow:hidden;max-width:460px;">
+        <div style="background:#15803d;color:#fff;padding:12px 16px;display:flex;justify-content:space-between;">
+          <span style="font-weight:800;font-size:15px;">💰 รับชำระแล้ว</span>
+          <span style="opacity:.7;">${thDate(TODAY)}</span>
+        </div>
+        <div style="background:#f9fafb;padding:12px 16px;border-bottom:1px solid #e5e7eb;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="color:#6b7280;padding:3px 0;">🏪 เจ้าหนี้</td><td style="font-weight:700;text-align:right;">${SHOP_NAME}</td></tr>
+            <tr><td style="color:#6b7280;padding:3px 0;">👤 ลูกหนี้</td><td style="font-weight:700;text-align:right;color:#1a3a2a;">${c.name}</td></tr>
+            <tr><td style="color:#6b7280;padding:3px 0;">📅 วันที่</td><td style="text-align:right;">${thDate(TODAY)}</td></tr>
+          </table>
+        </div>
+        <div style="padding:12px 16px;">
+          <table style="width:100%;border-collapse:collapse;">
+            <tr><td style="color:#6b7280;padding:3px 0;">💵 รับชำระ</td><td style="text-align:right;font-weight:800;font-size:17px;color:#15803d;">฿${fmt(amt)}</td></tr>
+            <tr><td style="color:#6b7280;padding:3px 0;">ยอดเดิม</td><td style="text-align:right;color:#6b7280;">฿${fmt(c.totalDebt||0)}</td></tr>
+          </table>
+        </div>
+        <div style="background:${remaining>0?"#fef2f2":"#f0fdf4"};padding:12px 16px;border-top:2px solid ${remaining>0?"#ef4444":"#22c55e"};text-align:center;">
+          ${remaining>0
+            ? `<span style="color:#ef4444;font-weight:800;font-size:16px;">⚠️ ยังค้างอยู่: ฿${fmt(remaining)}</span>`
+            : `<span style="color:#15803d;font-weight:800;font-size:16px;">✅ ชำระครบแล้ว!</span>`}
+        </div>
+      </div>`,
+    body: `[ร้านอ้อ] รับชำระ
+ลูกหนี้: ${c.name}
+จำนวน: ฿${fmt(amt)}
+ยอดคงเหลือ: ${remaining>0?"฿"+fmt(remaining):"ชำระครบ!"}`
   };
 }
 
@@ -644,7 +740,8 @@ export default function App(){
     setNewDebt({customer:null,items:[{name:"",price:""}],dueDate:"",interestRate:""});
     gasNotify({...buildDebtEmail(ec,items,debtTotal,due,ir),extraEmails:settings.adminEmails||[]});
     if(settings.channelToken&&(settings.adminLineUids||[]).length>0){
-      gasNotifyLine({channelToken:settings.channelToken,uids:settings.adminLineUids,message:`📝 บันทึกหนี้ใหม่\n👤 ${ec.name}\n💵 ฿${fmt(debtTotal)}\n📅 ${TODAY}${due?"\n⏰ ทวง "+due:""}`});
+      gasNotifyLine({channelToken:settings.channelToken,uids:settings.adminLineUids,
+        message:lineDebtMsg(ec,items,debtTotal,due,ir)});
     }
     gasSync({action:"addDebt",txId,customerId:cid,date:TODAY,items,total:debtTotal,dueDate:due,interestRate:ir}).then(data=>{applyData(data);showToast("✅ sync สำเร็จ");});
   };

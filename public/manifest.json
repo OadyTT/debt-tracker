@@ -1,7 +1,7 @@
 {
   "name": "สมุดหนี้โชห่วย",
   "short_name": "สมุดหนี้",
-  "description": "บันทึกลูกหนี้ร้านแม่นาง",
+  "description": "บันทึกลูกหนี้ร้านโชห่วย",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f4f6f0",

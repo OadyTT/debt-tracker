@@ -86,7 +86,8 @@ function doPost(e) {
       case "updateCustomerNote": return jsonResponse(updateCustomerNote(d));
       case "updateCustomerPhone": return jsonResponse(updateCustomerPhone(d));
       case "approveHelper":  return jsonResponse(approveHelper(d));
-      case "rejectHelper":   return jsonResponse(rejectHelper(d));
+      case "rejectHelper":         return jsonResponse(rejectHelper(d));
+      case "refreshPendingProfiles": return jsonResponse(refreshPendingProfiles()||{ok:true});
       case "backup":         return jsonResponse(backup());
       case "addExpense":     return jsonResponse(addExpense(d));
       case "getExpenses":    return jsonResponse(getExpenses(d));
@@ -780,51 +781,167 @@ function handleAdminCommand(uid, text, replyToken, cfg) {
   );
 }
 
+// ════════════════════════════════════════════════
+//  LINE Profile helper
+//  ดึงชื่อ + รูปโปรไฟล์จาก LINE API
+// ════════════════════════════════════════════════
+function getLineProfile(uid) {
+  try {
+    const token = getChannelToken();
+    if (!token) return null;
+    const res = UrlFetchApp.fetch(
+      "https://api.line.me/v2/bot/profile/" + uid,
+      { headers: { "Authorization": "Bearer " + token }, muteHttpExceptions: true }
+    );
+    if (res.getResponseCode() !== 200) return null;
+    const p = JSON.parse(res.getContentText());
+    return { displayName: p.displayName||"", pictureUrl: p.pictureUrl||"" };
+  } catch(e) {
+    Logger.log("getLineProfile error: " + e.message);
+    return null;
+  }
+}
+
+// ── IMAGE formula helper ── ใส่รูปใน Sheets cell
+function imageCellFormula(url) {
+  return url ? '=IMAGE("' + url + '",4,40,40)' : "";
+}
+
 function addPendingHelper(uid) {
-  const ss=getSpreadsheet();
-  const sh=getOrCreate(ss,"ผู้ช่วย-pending",["uid","timestamp","status"]);
-  const rows=sheetToObjects(sh);
-  if(rows.find(r=>r.uid===uid)) return; // already exists
-  sh.appendRow([uid,new Date().toISOString(),"pending"]);
-  // Notify admin by email
-  try{
+  const ss  = getSpreadsheet();
+  const sh  = getOrCreate(ss, "ผู้ช่วย-pending",
+                ["uid","displayName","pictureUrl","timestamp","status"]);
+  const rows = sheetToObjects(sh);
+  if (rows.find(r => r.uid === uid)) {
+    // already exists — try update profile if blank
+    const data = sh.getDataRange().getValues();
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] === uid && !data[i][1]) {
+        const p = getLineProfile(uid);
+        if (p) {
+          sh.getRange(i+1, 2).setValue(p.displayName);
+          sh.getRange(i+1, 3).setFormula(imageCellFormula(p.pictureUrl));
+          sh.getRange(i+1, 3).setNote(p.pictureUrl); // store URL in note
+        }
+      }
+    }
+    return;
+  }
+
+  // ── ดึง LINE Profile ──
+  const profile = getLineProfile(uid);
+  const displayName = profile ? profile.displayName : "";
+  const pictureUrl  = profile ? profile.pictureUrl  : "";
+
+  // append row: uid | displayName | picture (IMAGE formula) | timestamp | status
+  const rowIdx = sh.getLastRow() + 1;
+  sh.getRange(rowIdx, 1).setValue(uid);
+  sh.getRange(rowIdx, 2).setValue(displayName);
+  if (pictureUrl) {
+    sh.getRange(rowIdx, 3).setFormula(imageCellFormula(pictureUrl));
+    sh.getRange(rowIdx, 3).setNote(pictureUrl); // URL เก็บใน Note
+  }
+  sh.getRange(rowIdx, 4).setValue(new Date().toISOString());
+  sh.getRange(rowIdx, 5).setValue("pending");
+
+  // ── ตั้งความสูงแถวให้เห็นรูป ──
+  try { sh.setRowHeight(rowIdx, 50); } catch(e) {}
+
+  // ── แจ้ง Admin Email ──
+  try {
     MailApp.sendEmail({
-      to:MAIN_ADMIN,
-      subject:"🔔 มีผู้ขอเป็นผู้ช่วย Admin",
-      body:"LINE UID: "+uid+"\nเวลา: "+new Date().toLocaleString("th-TH")+"\n\nกรุณาเข้า Settings เพื่ออนุมัติ"
+      to: MAIN_ADMIN,
+      subject: "🔔 มีผู้ขอเป็นผู้ช่วย Admin — " + (displayName||uid),
+      htmlBody: `<div style="font-family:sans-serif;">
+        <h3>🔔 มีผู้ขอเป็นผู้ช่วย Admin</h3>
+        ${pictureUrl ? '<img src="'+pictureUrl+'" style="width:60px;height:60px;border-radius:50%;"><br><br>' : ''}
+        <b>ชื่อ LINE:</b> ${displayName||"(ไม่ระบุ)"}<br>
+        <b>LINE UID:</b> ${uid}<br>
+        <b>เวลา:</b> ${new Date().toLocaleString("th-TH")}<br><br>
+        <i>เข้า Settings → อนุมัติผู้ช่วย</i>
+      </div>`,
+      body: "ชื่อ: "+displayName+"
+LINE UID: "+uid
     });
-  }catch(e){}
+  } catch(e) {}
+}
+
+// ── refreshPendingProfiles — รันใน Apps Script เพื่ออัปเดตรูปที่มีอยู่แล้ว ──
+function refreshPendingProfiles() {
+  const ss   = getSpreadsheet();
+  const sh   = ss.getSheetByName("ผู้ช่วย-pending");
+  if (!sh) return;
+  const data = sh.getDataRange().getValues();
+  const headers = data[0];
+  const uidCol = headers.indexOf("uid");
+  const nameCol = headers.indexOf("displayName");
+  const picCol  = headers.indexOf("pictureUrl");
+  if (uidCol < 0) return;
+
+  for (let i = 1; i < data.length; i++) {
+    const uid = data[i][uidCol];
+    if (!uid) continue;
+    const p = getLineProfile(uid);
+    if (!p) continue;
+    if (nameCol >= 0) sh.getRange(i+1, nameCol+1).setValue(p.displayName);
+    if (picCol  >= 0) {
+      sh.getRange(i+1, picCol+1).setFormula(imageCellFormula(p.pictureUrl));
+      sh.getRange(i+1, picCol+1).setNote(p.pictureUrl);
+    }
+    try { sh.setRowHeight(i+1, 50); } catch(e) {}
+    Utilities.sleep(300); // ไม่ให้ rate limit
+  }
 }
 
 function getPendingHelpers() {
-  const ss=getSpreadsheet();
-  const sh=getOrCreate(ss,"ผู้ช่วย-pending",["uid","timestamp","status"]);
-  return { ok:true, pending:sheetToObjects(sh) };
+  const ss = getSpreadsheet();
+  const sh = getOrCreate(ss, "ผู้ช่วย-pending",
+               ["uid","displayName","pictureUrl","timestamp","status"]);
+  const rows = sheetToObjects(sh).map(r => ({
+    ...r,
+    // ดึง pictureUrl จาก Note (เพราะ cell มี formula)
+    pictureUrl: sh.getRange(
+      (sheetToObjects(sh).findIndex(x=>x.uid===r.uid)||0)+2, 3
+    ).getNote() || r.pictureUrl || "",
+  }));
+  return { ok:true, pending:rows };
 }
 
 function approveHelper(d) {
-  const ss=getSpreadsheet();
-  const pSh=getOrCreate(ss,"ผู้ช่วย-pending",["uid","timestamp","status"]);
-  const data=pSh.getDataRange().getValues();
-  for(let i=1;i<data.length;i++){
-    if(data[i][0]===d.uid){pSh.getRange(i+1,3).setValue("approved");break;}
+  const ss  = getSpreadsheet();
+  const pSh = getOrCreate(ss, "ผู้ช่วย-pending",
+                ["uid","displayName","pictureUrl","timestamp","status"]);
+  const data = pSh.getDataRange().getValues();
+  const headers = data[0];
+  const statusCol = headers.indexOf("status") + 1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === d.uid) {
+      pSh.getRange(i+1, statusCol||5).setValue("approved");
+      break;
+    }
   }
-  // Add to settings adminLineUids
-  const cfg=getSettings().settings;
-  const uids=cfg.adminLineUids||[];
-  if(!uids.includes(d.uid)) uids.push(d.uid);
-  saveSettings({settings:{...cfg,adminLineUids:uids}});
-  // Notify via LINE
-  sendLineMessage(d.uid,"✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว! คุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้ใหม่");
+  // Add to adminLineUids in settings
+  const cfg  = getSettings().settings;
+  const uids = cfg.adminLineUids || [];
+  if (!uids.includes(d.uid)) uids.push(d.uid);
+  saveSettings({ settings: { ...cfg, adminLineUids: uids } });
+  sendLineMessage(d.uid, "✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว!
+คุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้");
   return { ok:true };
 }
 
 function rejectHelper(d) {
-  const ss=getSpreadsheet();
-  const pSh=getOrCreate(ss,"ผู้ช่วย-pending",["uid","timestamp","status"]);
-  const data=pSh.getDataRange().getValues();
-  for(let i=1;i<data.length;i++){
-    if(data[i][0]===d.uid){pSh.getRange(i+1,3).setValue("rejected");break;}
+  const ss  = getSpreadsheet();
+  const pSh = getOrCreate(ss, "ผู้ช่วย-pending",
+                ["uid","displayName","pictureUrl","timestamp","status"]);
+  const data = pSh.getDataRange().getValues();
+  const headers = data[0];
+  const statusCol = headers.indexOf("status") + 1;
+  for (let i = 1; i < data.length; i++) {
+    if (data[i][0] === d.uid) {
+      pSh.getRange(i+1, statusCol||5).setValue("rejected");
+      break;
+    }
   }
   return { ok:true };
 }

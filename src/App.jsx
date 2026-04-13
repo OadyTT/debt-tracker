@@ -1997,16 +1997,46 @@ export default function App(){
             {/* Pending helpers */}
             {pendingHelpers.filter(h=>h.status==="pending").length>0&&(
               <div style={{marginTop:12}}>
-                <div style={{fontWeight:700,marginBottom:8,color:"#f59e0b"}}>⏳ รออนุมัติ ({pendingHelpers.filter(h=>h.status==="pending").length} คน)</div>
+                <div style={{fontWeight:700,marginBottom:8,color:"#f59e0b",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <span>⏳ รออนุมัติ ({pendingHelpers.filter(h=>h.status==="pending").length} คน)</span>
+                </div>
                 {pendingHelpers.filter(h=>h.status==="pending").map(h=>(
-                  <div key={h.uid} style={{background:"#fff7ed",borderRadius:10,padding:"10px 12px",marginBottom:8,display:"flex",alignItems:"center",gap:10}}>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:"0.8em",fontWeight:600}}>LINE UID:</div>
-                      <div style={{fontSize:"0.75em",color:"#374151",wordBreak:"break-all",fontFamily:"monospace"}}>{h.uid}</div>
-                      <div style={{fontSize:"0.72em",color:"#9ca3af"}}>{h.timestamp}</div>
+                  <div key={h.uid} style={{background:"#fff7ed",borderRadius:12,padding:"12px 14px",marginBottom:10,border:"1.5px solid #fde68a"}}>
+                    {/* Profile row */}
+                    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                      {/* Avatar: LINE profile pic or initial */}
+                      <div style={{width:46,height:46,borderRadius:"50%",overflow:"hidden",flexShrink:0,background:"#06c755",display:"flex",alignItems:"center",justifyContent:"center",border:"2px solid #86efac"}}>
+                        {h.pictureUrl
+                          ? <img src={h.pictureUrl} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}} onError={e=>{e.target.style.display="none";}}/>
+                          : <span style={{color:"#fff",fontWeight:700,fontSize:18}}>L</span>}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        {/* Display name */}
+                        {h.displayName?(
+                          <div style={{fontWeight:700,fontSize:"0.95em",color:"#1a3a2a",marginBottom:2}}>{h.displayName}</div>
+                        ):(
+                          <div style={{fontWeight:600,fontSize:"0.85em",color:"#9ca3af",marginBottom:2}}>ไม่ทราบชื่อ</div>
+                        )}
+                        {/* UID shortened */}
+                        <div style={{fontSize:"0.72em",color:"#92400e",fontFamily:"monospace",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {h.uid}
+                        </div>
+                        <div style={{fontSize:"0.68em",color:"#9ca3af",marginTop:1}}>
+                          {h.timestamp?new Date(h.timestamp).toLocaleString("th-TH",{dateStyle:"short",timeStyle:"short"}):""}
+                        </div>
+                      </div>
                     </div>
-                    <button onClick={()=>doApproveHelper(h.uid)} style={{padding:"6px 12px",background:"#22c55e",color:"#fff",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:"0.82em",fontFamily:"'Sarabun',sans-serif",flexShrink:0}}>✅ อนุมัติ</button>
-                    <button onClick={()=>doRejectHelper(h.uid)} style={{padding:"6px 10px",background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:8,cursor:"pointer",fontWeight:600,fontSize:"0.82em",fontFamily:"'Sarabun',sans-serif",flexShrink:0}}>✕</button>
+                    {/* Action buttons */}
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>doApproveHelper(h.uid)}
+                        style={{flex:1,padding:"8px 0",background:"#22c55e",color:"#fff",border:"none",borderRadius:9,cursor:"pointer",fontWeight:700,fontSize:"0.88em",fontFamily:"'Sarabun',sans-serif"}}>
+                        ✅ อนุมัติ{h.displayName?` ${h.displayName}`:""}
+                      </button>
+                      <button onClick={()=>doRejectHelper(h.uid)}
+                        style={{padding:"8px 14px",background:"#fee2e2",color:"#ef4444",border:"none",borderRadius:9,cursor:"pointer",fontWeight:600,fontSize:"0.85em",fontFamily:"'Sarabun',sans-serif"}}>
+                        ✕ ปฏิเสธ
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

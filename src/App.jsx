@@ -673,11 +673,12 @@ const REPORT_TYPES=[
 ];
 
 function ReportView({customers,transactions,onClose,settings}){
-  const [type,    setType]    = useState("debtors");
-  const [month,   setMonth]   = useState(new Date().toISOString().slice(0,7));
-  const [expenses,setExpenses]= useState([]);
-  const [saving,  setSaving]  = useState(false);
-  const [msg,     setMsg]     = useState("");
+  const [type,       setType]      = useState("debtors");
+  const [month,      setMonth]     = useState(new Date().toISOString().slice(0,7));
+  const [expenses,   setExpenses]  = useState([]);
+  const [saving,     setSaving]    = useState(false);
+  const [msg,        setMsg]       = useState("");
+  const [expenseWarn,setExpenseWarn]=useState(false);
   const reportRef = useRef();
 
   const thMonths=["ม.ค.","ก.พ.","มี.ค.","เม.ย.","พ.ค.","มิ.ย.","ก.ค.","ส.ค.","ก.ย.","ต.ค.","พ.ย.","ธ.ค."];
@@ -689,8 +690,18 @@ function ReportView({customers,transactions,onClose,settings}){
   // load expenses for month when needed
   useEffect(()=>{
     if(type!=="expenses") return;
+    setExpenses([]); // clear before fetch
     fetch(`${GAS_URL}?action=getExpenses&month=${month}`)
-      .then(r=>r.json()).then(d=>{ if(d.ok) setExpenses(d.expenses||[]); }).catch(()=>{});
+      .then(r=>r.json())
+      .then(d=>{
+        if(d.ok && (d.expenses||[]).length > 0){
+          setExpenses(d.expenses||[]);
+        } else if(d.ok && (d.expenses||[]).length === 0){
+          // GAS returned 0 - might be date serial bug → show warning
+          setExpenses([]);
+          setExpenseWarn(true);
+        }
+      }).catch(()=>{});
   },[type,month]);
 
   // ── Computed data ──
@@ -972,7 +983,19 @@ function ReportView({customers,transactions,onClose,settings}){
             <>
               <ReportHeader title={`รายงานรายจ่ายซื้อสด — ${monthLabel}`} subtitle="โหมดรถส่งของ"/>
               {expenses.length===0?(
-                <div style={{textAlign:"center",padding:60,color:"#9ca3af"}}>ไม่มีรายจ่ายในเดือนนี้</div>
+                <div style={{textAlign:"center",padding:30}}>
+                  {expenseWarn?(
+                    <div style={{background:"#fff7ed",borderRadius:12,padding:14,border:"1.5px solid #fde68a",textAlign:"left"}}>
+                      <div style={{fontWeight:700,color:"#92400e",marginBottom:6,fontSize:"0.9em"}}>⚠️ ข้อมูลอยู่ใน Sheets แต่โหลดไม่ได้</div>
+                      <div style={{fontSize:"0.8em",color:"#92400e",lineHeight:1.7}}>
+                        Code.gs ต้อง Redeploy:<br/>
+                        Apps Script → Deploy → Manage → Edit → New version → Deploy
+                      </div>
+                    </div>
+                  ):(
+                    <div style={{color:"#9ca3af"}}>ไม่มีรายจ่ายในเดือนนี้</div>
+                  )}
+                </div>
               ):(
                 <>
                   <table style={tableStyle}>
@@ -1133,12 +1156,27 @@ function CashOutView({onClose,showToast,settings}){
   const loadHistory=async(month,force=false)=>{
     const targetMonth = month || dateFilter;
     if(histLoading) return;
-    if(histLoaded&&!force) return; // use cache
+    if(histLoaded&&!force) return; // cache hit
     setHistLoading(true);
     try{
       const res=await fetch(`${GAS_URL}?action=getExpenses&month=${targetMonth}`);
       const d=await res.json();
-      if(d.ok){ setHist(d); setHistLoaded(true); }
+      if(d.ok){
+        // ── Smart merge: don't replace good data with empty ──
+        // If GAS returns 0 items but we have optimistic items → keep optimistic
+        const incoming = d.expenses||[];
+        const hasOptimistic = hist && (hist.expenses||[]).length > 0;
+        if(incoming.length > 0){
+          // GAS returned real data — use it
+          setHist(d);
+          setHistLoaded(true);
+        } else if(!hasOptimistic){
+          // Both empty — show empty (maybe truly no data)
+          setHist(d);
+          setHistLoaded(true);
+        }
+        // else: GAS returned empty but we have optimistic → keep optimistic
+      }
     }catch(e){ console.error('loadHistory error:', e); }
     setHistLoading(false);
   };
@@ -1355,9 +1393,18 @@ function CashOutView({onClose,showToast,settings}){
             </div>
           )}
           {!histLoading&&histLoaded&&hist&&hist.expenses.length===0&&(
-            <div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>
-              <div style={{fontSize:28,marginBottom:8}}>📭</div>
-              <div>ไม่มีรายจ่ายเดือนนี้</div>
+            <div style={{textAlign:"center",padding:20}}>
+              <div style={{background:"#fff7ed",borderRadius:12,padding:14,border:"1.5px solid #fde68a",textAlign:"left",marginBottom:12}}>
+                <div style={{fontWeight:700,color:"#92400e",marginBottom:6,fontSize:"0.9em"}}>⚠️ มีข้อมูลใน Sheets แต่โหลดไม่ได้</div>
+                <div style={{fontSize:"0.8em",color:"#92400e",lineHeight:1.6}}>
+                  Code.gs ต้อง Redeploy:<br/>
+                  Apps Script → Deploy → Manage → Edit → New version → Deploy
+                </div>
+              </div>
+              <button onClick={()=>loadHistory(dateFilter,true)}
+                style={{padding:"10px 24px",background:"#2563eb",border:"none",borderRadius:10,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,color:"#fff",fontSize:"0.9em"}}>
+                🔄 ลองโหลดใหม่
+              </button>
             </div>
           )}
 

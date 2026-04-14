@@ -1044,14 +1044,15 @@ function CashOutView({onClose,showToast,settings}){
 
   // ── Load history ONLY on demand (not on mount, not on tab switch) ──
   const loadHistory=async(month,force=false)=>{
+    const targetMonth = month || dateFilter;
     if(histLoading) return;
-    if(histLoaded&&!force&&month===dateFilter) return; // use cache
+    if(histLoaded&&!force) return; // use cache
     setHistLoading(true);
     try{
-      const res=await fetch(`${GAS_URL}?action=getExpenses&month=${month||dateFilter}`);
+      const res=await fetch(`${GAS_URL}?action=getExpenses&month=${targetMonth}`);
       const d=await res.json();
       if(d.ok){ setHist(d); setHistLoaded(true); }
-    }catch{}
+    }catch(e){ console.error('loadHistory error:', e); }
     setHistLoading(false);
   };
 
@@ -1803,11 +1804,32 @@ export default function App(){
 
   const handlePhotoUploaded=(cid,url)=>{ setCustomers(p=>p.map(c=>c.id===cid?{...c,photo:url}:c)); showToast("อัปโหลดรูปแล้ว"); };
 
+  // ── handleSavePhone — optimistic update เบอร์โทร ──
+  const handleSavePhone=async(cid,phone)=>{
+    setCustomers(p=>p.map(c=>c.id===cid?{...c,phone}:c));
+    showToast("บันทึกเบอร์แล้ว","📞");
+    fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"updateCustomerPhone",customerId:cid,phone})}).catch(()=>{});
+  };
+
+  // ── handleSaveNote — optimistic update Note ──
+  const handleSaveNote=async(cid,note)=>{
+    setCustomers(p=>p.map(c=>c.id===cid?{...c,note}:c));
+    showToast("บันทึก Note แล้ว","📝");
+    fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"updateCustomerNote",customerId:cid,note})}).catch(()=>{});
+  };
+
   const doSaveSettings=async()=>{
-    showToast("กำลังบันทึก...","⏳",10000);
-    await gasPostRead({action:"saveSettings",settings:draft});
-    setSettings(draft);
-    showToast("บันทึกตั้งค่าแล้ว");
+    showToast("กำลังบันทึก...","⏳",5000);
+    // fire-and-forget (no-cors) then optimistic update
+    fetch(GAS_URL,{method:"POST",mode:"no-cors",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"saveSettings",settings:draft})}).catch(()=>{});
+    setTimeout(()=>{
+      setSettings(draft);
+      showToast("บันทึกตั้งค่าแล้ว ✅");
+    }, 1000);
   };
 
   const loadSupportPayments=async()=>{
@@ -1848,13 +1870,13 @@ export default function App(){
 
   const doVerifyVersion=async()=>{
     if(!versionCode.trim())return;
-    const res=await gasPostRead({action:"verifyVersion",code:versionCode});
+    const res=await gasPostRead({action:"verifyVersion",code:versionCode}).catch(()=>({ok:false,message:"Connection error"}));
     if(res.isFullVersion){ showToast(res.message||"Full Version!","🎉"); setSettings(s=>({...s,isFullVersion:true})); }
     else showToast("รหัสไม่ถูกต้อง","❌");
   };
 
   const doApproveHelper=async(uid)=>{
-    await gasPostRead({action:"approveHelper",uid});
+    await gasPostRead({action:"approveHelper",uid}).catch(()=>{});
     setPendingHelpers(p=>p.filter(h=>h.uid!==uid));
     showToast("อนุมัติแล้ว! ส่ง LINE แล้ว","✅");
     loadAll(true);
@@ -1939,6 +1961,10 @@ export default function App(){
     </div>
   );
   if(showPin) return <PinScreen onSuccess={()=>{setShowPin(false);setPinUnlocked(true);setDraft({...settings});setView("settings");}} onCancel={()=>setShowPin(false)}/>;
+
+  // ── Global modals (render over any view) ──
+  if(showCashOut) return <CashOutView onClose={()=>setShowCashOut(false)} showToast={showToast} settings={settings}/>;
+  if(showReport)  return <ReportView  customers={customers} transactions={transactions} onClose={()=>setShowReport(false)} settings={settings}/>;
 
   // ── SETTINGS ────────────────────────────────
   if(view==="settings") return(
@@ -2644,10 +2670,8 @@ export default function App(){
       {isDesktop&&<SidebarNav/>}
       <div style={{flex:1,paddingBottom:isDesktop?0:80}}>
         {toast&&<Toast msg={toast.msg} icon={toast.icon}/>}
-        {showSupport&&<SupportPage settings={settings} onClose={()=>setShowSupport(false)}/> }
+        {showSupport&&<SupportPage settings={settings} onClose={()=>setShowSupport(false)}/>}
         {showHelp&&<HelpModal onClose={()=>setShowHelp(false)}/>}
-        {showCashOut&&<CashOutView onClose={()=>setShowCashOut(false)} showToast={showToast} settings={settings}/>}
-        {showReport&&<ReportView customers={customers} transactions={transactions} onClose={()=>setShowReport(false)} settings={settings}/>}
         {showQR&&<QRModal c={customers[0]||{name:"?",totalDebt:0,id:0}} settings={settings} onPaid={()=>{}} onClose={()=>setShowQR(false)}/>}
         <div style={{background:"linear-gradient(135deg,#1a3a2a 0%,#1a7a4a 100%)",color:"#fff",padding:"24px 16px 32px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,.06)"}}/>

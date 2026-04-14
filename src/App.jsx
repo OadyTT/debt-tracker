@@ -9,9 +9,7 @@ const CORRECT_PIN  = "4207";
 const DEFAULT_QR   = "0871407251"; // default PromptPay (debt collection)
 const SUPPORT_QR   = "0655619464"; // PromptPay สนับสนุนค่ากาแฟ (แยกต่างหาก)
 
-const fl=document.createElement("link");
-fl.href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700;800&display=swap";
-fl.rel="stylesheet";document.head.appendChild(fl);
+// Font loaded via index.html preconnect
 
 // ══ PromptPay QR ════════════════════════════════
 function crc16(s){let c=0xFFFF;for(let i=0;i<s.length;i++){c^=s.charCodeAt(i)<<8;for(let j=0;j<8;j++)c=c&0x8000?(c<<1)^0x1021:c<<1;}return(c&0xFFFF).toString(16).toUpperCase().padStart(4,"0");}

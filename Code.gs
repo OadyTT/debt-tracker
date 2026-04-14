@@ -45,6 +45,22 @@ function sheetToObjects(sh) {
   return data.slice(1).map(r => Object.fromEntries(headers.map((h,i)=>[h,r[i]])));
 }
 
+// ── Global: Convert Sheets date serial OR string to YYYY-MM-DD ──
+// Google Sheets epoch: Dec 30, 1899 (serial 0)
+// Unix epoch offset: 25569 days
+function toDateStr(v) {
+  if (!v && v !== 0) return null;
+  if (typeof v === "number" && v > 1000) {
+    // Date serial → YYYY-MM-DD (UTC midnight)
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return d.toISOString().slice(0, 10);
+  }
+  const s = String(v).trim();
+  if (!s || s === "0") return null;
+  // Already a date string — take first 10 chars (YYYY-MM-DD)
+  return s.slice(0, 10);
+}
+
 function jsonResponse(data) {
   const output = ContentService.createTextOutput(JSON.stringify(data));
   output.setMimeType(ContentService.MimeType.JSON);
@@ -113,25 +129,14 @@ function doPost(e) {
 }
 
 // ════════════════════════════════════════════════
-//  getData
-// ════════════════════════════════════════════════
+//  toDateStr — Global date serial converter
+//  Google Sheets auto-converts date strings to serial numbers
+//  This converts them back to YYYY-MM-DD
+
 function getData() {
   const ss  = getSpreadsheet();
   const cSh = getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh = getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
-  // Sheets may auto-convert date strings to serial numbers
-  // Google Sheets epoch: Dec 30, 1899 → offset = 25569 days from Unix epoch
-  function toDateStr(v) {
-    if (!v && v !== 0) return null;
-    if (typeof v === "number" && v > 1000) {
-      // Convert Sheets serial to YYYY-MM-DD
-      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
-      return d.toISOString().slice(0, 10);
-    }
-    const s = String(v).trim();
-    return s && s !== "0" ? s.slice(0, 10) : null;
-  }
-
   const customers = sheetToObjects(cSh).map(c=>({
     ...c,
     id:        Number(c.id),
@@ -146,6 +151,7 @@ function getData() {
     customerId:   Number(t.customerId),
     total:        Number(t.total)||0,
     paid:         t.paid===true||String(t.paid).toUpperCase()==="TRUE",
+    date:         toDateStr(t.date) || String(t.date||"").slice(0,10),
     items:        typeof t.items==="string"?JSON.parse(t.items||"[]"):(t.items||[]),
     interestRate: Number(t.interestRate)||0,
     dueDate:      toDateStr(t.dueDate),
@@ -515,6 +521,7 @@ function getExpenses(params) {
     ...e,
     id:    Number(e.id),
     total: Number(e.total)||0,
+    date:  toDateStr(e.date) || "",  // convert serial if Sheets auto-converted
     items: (() => {
       try {
         if (typeof e.items === "string") {

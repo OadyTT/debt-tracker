@@ -66,7 +66,16 @@ const TODAY  = new Date().toISOString().slice(0,10);
 const fmt    = n=>Number(n).toLocaleString("th-TH");
 const initial= name=>(name||"?").trim().charAt(0);
 const aColor = name=>["#e07b39","#3b82f6","#22c55e","#a855f7","#ef4444","#f59e0b","#06b6d4"][(name||"").charCodeAt(0)%7];
-const thDate = d=>{if(!d)return"";try{return new Date(d).toLocaleDateString("th-TH",{day:"numeric",month:"short",year:"2-digit"});}catch{return d;}};
+const thDate=(d,showTime=false)=>{
+  if(!d)return"";
+  try{
+    const dt=new Date(d);
+    const dateStr=dt.toLocaleDateString("th-TH",{day:"numeric",month:"short",year:"2-digit",timeZone:"Asia/Bangkok"});
+    if(!showTime) return dateStr;
+    const timeStr=dt.toLocaleTimeString("th-TH",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Bangkok"});
+    return dateStr+" "+timeStr;
+  }catch{return String(d).slice(0,10);}
+};
 
 // Interest calc: daily compound
 function calcInterest(tx){
@@ -302,6 +311,29 @@ function PhoneEdit({phone,onSave}){
       </span>
       <span style={{fontSize:"0.75em",opacity:.5}}>✏️</span>
     </div>
+  );
+}
+
+// ══ DueDateEdit — Inline due date editor ══════════
+function DueDateEdit({txId,customerId,dueDate,onSave}){
+  const [editing,setEditing]=useState(false);
+  const [val,setVal]=useState(dueDate||"");
+  useEffect(()=>setVal(dueDate||""),[dueDate]);
+  const save=()=>{ onSave(txId,customerId,val); setEditing(false); };
+  if(editing) return(
+    <div style={{display:"flex",gap:4,alignItems:"center"}}>
+      <input type="date" value={val} onChange={e=>setVal(e.target.value)}
+        style={{padding:"2px 6px",border:"1.5px solid #f59e0b",borderRadius:6,fontFamily:"'Sarabun',sans-serif",fontSize:"0.75em",outline:"none",background:"#fffbeb"}}/>
+      <button onClick={save} style={{background:"#22c55e",border:"none",borderRadius:5,padding:"2px 8px",color:"#fff",cursor:"pointer",fontWeight:700,fontSize:"0.75em"}}>✓</button>
+      <button onClick={()=>{setVal(dueDate||"");setEditing(false);}} style={{background:"#f3f4f6",border:"none",borderRadius:5,padding:"2px 6px",cursor:"pointer",fontSize:"0.75em"}}>✕</button>
+    </div>
+  );
+  return(
+    <span onClick={()=>setEditing(true)} style={{cursor:"pointer",fontSize:"0.78em",display:"inline-flex",alignItems:"center",gap:3,
+      color:dueDate&&dueDate<=new Date().toISOString().slice(0,10)?"#ef4444":"#9ca3af",
+      background:dueDate?"#fff7ed":"#f9fafb",borderRadius:6,padding:"1px 7px",border:`1px solid ${dueDate?"#fde68a":"#e5e7eb"}`}}>
+      {dueDate?("⏰ "+new Date(dueDate).toLocaleDateString("th-TH",{day:"numeric",month:"short",timeZone:"Asia/Bangkok"})):"📅 ตั้งวันทวง"}
+    </span>
   );
 }
 
@@ -2354,7 +2386,7 @@ export default function App(){
           <div style={{background:"#1a3a2a",color:"#fff",padding:"20px 16px 24px",position:"sticky",top:0,zIndex:10}}>
             <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16}}>
               <button onClick={()=>setView("list")} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer"}}>←</button>
-              <span style={{fontWeight:700,fontSize:"1.1em",flex:1}}>ประวัติลูกค้า</span>
+              <span style={{fontWeight:700,fontSize:"1.1em",flex:1}}>📋 ประวัติลูกหนี้</span>
               <button onClick={()=>loadAll(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em",fontWeight:600}}>{refreshing?"⏳":"🔄"}</button>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
@@ -2392,10 +2424,25 @@ export default function App(){
               return(
                 <div key={tx.id} style={{background:"#fff",borderRadius:14,padding:14,marginBottom:10,boxShadow:"0 2px 8px rgba(0,0,0,.06)",opacity:tx.paid?.5:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:8,alignItems:"center"}}>
-                    <div>
-                      <span style={{color:"#6b7280",fontSize:"0.85em"}}>📅 {tx.date}</span>
-                      {tx.dueDate&&<span style={{fontSize:"0.78em",color:tx.dueDate<=TODAY&&!tx.paid?"#ef4444":"#9ca3af",marginLeft:8}}>⏰ {thDate(tx.dueDate)}</span>}
-                      {tx.interestRate>0&&<span style={{fontSize:"0.75em",background:"#fff7ed",color:"#f59e0b",borderRadius:4,padding:"1px 5px",marginLeft:6}}>{tx.interestRate}%/เดือน</span>}
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <span style={{color:"#6b7280",fontSize:"0.85em"}}>📅 {thDate(tx.date||tx.createdAt||"")}</span>
+                      {tx.interestRate>0&&<span style={{fontSize:"0.75em",background:"#fff7ed",color:"#f59e0b",borderRadius:4,padding:"1px 5px"}}>{tx.interestRate}%/เดือน</span>}
+                      {/* Due date inline edit */}
+                      {!tx.paid&&(
+                        <DueDateEdit
+                          txId={tx.id}
+                          customerId={tx.customerId}
+                          dueDate={tx.dueDate}
+                          onSave={(txId,cid,due)=>{
+                            setTransactions(p=>p.map(t=>t.id===txId?{...t,dueDate:due}:t));
+                            setCustomers(p=>p.map(c=>c.id===cid?{...c,dueDate:due}:c));
+                            showToast("อัปเดตวันทวงแล้ว","📅");
+                            fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+                              body:JSON.stringify({action:"updateDebt",transactionId:txId,customerId:cid,
+                                items:tx.items,newTotal:tx.total,interestRate:tx.interestRate,dueDate:due})}).catch(()=>{});
+                          }}
+                        />
+                      )}
                     </div>
                     <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <span style={{fontWeight:700,color:tx.paid?"#22c55e":"#ef4444"}}>{tx.paid?"✅ จ่ายแล้ว":`฿${fmt(tx.total)}`}</span>
@@ -2811,7 +2858,7 @@ export default function App(){
             {recentTx.map(tx=>(
               <div key={tx.id} onClick={()=>{if(tx.customer){setSelectedCid(tx.customer.id);setView("customer");}}} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 0",borderBottom:"1px solid #f3f4f6",cursor:"pointer"}}>
                 {tx.customer?<Avatar c={tx.customer} size={36}/>:<div style={{width:36,height:36,borderRadius:"50%",background:"#e5e7eb",flexShrink:0}}/>}
-                <div style={{flex:1}}><div style={{fontWeight:600}}>{tx.customer?.name||"?"}</div><div style={{fontSize:"0.8em",color:"#9ca3af"}}>{tx.date}{tx.dueDate?` · ทวง ${thDate(tx.dueDate)}`:""}</div></div>
+                <div style={{flex:1}}><div style={{fontWeight:600}}>{tx.customer?.name||"?"}</div><div style={{fontSize:"0.8em",color:"#9ca3af"}}>{thDate(tx.date)} {tx.dueDate?`· ทวง ${thDate(tx.dueDate)}`:""}</div></div>
                 <div style={{fontWeight:700,color:"#ef4444"}}>฿{fmt(tx.total)}</div>
               </div>
             ))}

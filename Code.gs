@@ -833,8 +833,7 @@ function handleAdminCommand(uid, text, replyToken, cfg) {
     const data  = getData();
     const due   = (data.customers||[]).filter(c => c.dueDate === today && c.totalDebt > 0);
     if (due.length === 0) {
-      replyLine(replyToken, "✅ ไม่มีลูกหนี้ครบกำหนดวันนี้
-📅 " + thaiDate(today));
+      replyLine(replyToken, "✅ ไม่มีลูกหนี้ครบกำหนดวันนี้\n📅 " + thaiDate(today));
       return;
     }
     let msg = "🔴 ครบกำหนดวันนี้ (" + due.length + " ราย)" +
@@ -1047,8 +1046,7 @@ function addPendingHelper(uid) {
         <b>เวลา:</b> ${new Date().toLocaleString("th-TH")}<br><br>
         <i>เข้า Settings → อนุมัติผู้ช่วย</i>
       </div>`,
-      body: "ชื่อ: "+displayName+"
-LINE UID: "+uid
+      body: "ชื่อ: "+displayName+"\nLINE UID: "+uid
     });
   } catch(e) {}
 }
@@ -1112,8 +1110,7 @@ function approveHelper(d) {
   const uids = cfg.adminLineUids || [];
   if (!uids.includes(d.uid)) uids.push(d.uid);
   saveSettings({ settings: { ...cfg, adminLineUids: uids } });
-  sendLineMessage(d.uid, "✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว!
-คุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้");
+  sendLineMessage(d.uid, "✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว!\nคุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้");
   return { ok:true };
 }
 

@@ -1116,7 +1116,15 @@ function CashOutView({onClose,showToast,settings}){
   // ── Tab switch: go to history + load if not yet loaded ──
   const goHistory=()=>{
     setTab("history");
-    loadHistory(dateFilter);      // no-op if cache hit
+    // If we have optimistic data, show it immediately
+    // then do a background refresh after 2s (GAS usually processes within 2s)
+    if(histLoaded && hist){
+      // show immediately
+    } else {
+      loadHistory(dateFilter);
+    }
+    // Always background-refresh to sync with server
+    setTimeout(()=>{ loadHistory(dateFilter, true); }, 2200);
   };
 
   const changeMonth=(newMonth)=>{
@@ -1129,13 +1137,30 @@ function CashOutView({onClose,showToast,settings}){
     setSaving(true);
     const expItems=items.filter(it=>it.name||it.price).map(it=>({name:it.name||"รายการ",price:parseFloat(it.price)||0}));
     const today=new Date().toISOString().slice(0,10);
+    const newExpense={
+      id:Date.now(), date:today, supplier:supplier||"ไม่ระบุ",
+      items:expItems, total, note:note||"",
+    };
+
+    // Fire-and-forget to GAS
     fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({action:"addExpense",supplier,items:expItems,total,date:today,note})}).catch(()=>{});
-    setTimeout(()=>{
-      setSaving(false);
-      setStep("done");
-      setHistLoaded(false);        // invalidate cache after new expense
-    },500);
+      body:JSON.stringify({action:"addExpense",...newExpense})}).catch(()=>{});
+
+    // ── Optimistic update ──
+    // เพิ่ม expense ลง hist ทันทีโดยไม่รอ GAS
+    setHist(prev=>{
+      if(!prev) return { expenses:[newExpense], todayTotal:total, monthTotal:total };
+      const isSameMonth = today.startsWith(dateFilter);
+      return {
+        expenses:   [newExpense, ...(prev.expenses||[])],
+        todayTotal: (prev.todayTotal||0) + total,
+        monthTotal: isSameMonth?(prev.monthTotal||0)+total:(prev.monthTotal||0),
+      };
+    });
+    setHistLoaded(true);  // mark as loaded so goHistory uses optimistic data
+
+    setSaving(false);
+    setStep("done");
   };
 
   const reset=()=>{ setSupplier(""); setItems([{name:"",price:""}]); setNote(""); setStep("form"); };
@@ -1175,7 +1200,7 @@ function CashOutView({onClose,showToast,settings}){
               <div style={{fontWeight:800,fontSize:"1.8em",color:"#1e3a5f",marginBottom:24}}>฿{fmt(total)}</div>
               <div style={{display:"flex",gap:10,justifyContent:"center"}}>
                 <button onClick={reset} style={{padding:"12px 24px",background:"#2563eb",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>+ บันทึกอีกครั้ง</button>
-                <button onClick={()=>goHistory()} style={{padding:"12px 24px",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>📋 ดูประวัติ</button>
+                <button onClick={()=>goHistory()} style={{padding:"12px 24px",background:"#2563eb",color:"#fff",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"1em"}}>📋 ดูประวัติ</button>
               </div>
             </div>
           ):step==="confirm"?(

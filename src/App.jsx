@@ -1090,7 +1090,7 @@ function CashOutView({onClose,showToast,settings}){
   const [histLoaded, setHistLoaded] = useState(false);  // cache: don't refetch every tab switch
   const [tab,     setTab]     = useState("new");
   const [saving,  setSaving]  = useState(false);
-  const [dateFilter,setDateFilter]=useState(new Date().toISOString().slice(0,7));
+  const [dateFilter,setDateFilter]=useState(new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'}).slice(0,7));
 
   const total    = items.reduce((s,it)=>s+(parseFloat(it.price)||0),0);
   const addItem  = ()=>setItems(p=>[...p,{name:"",price:""}]);
@@ -1114,15 +1114,13 @@ function CashOutView({onClose,showToast,settings}){
   // ── Tab switch: go to history + load if not yet loaded ──
   const goHistory=()=>{
     setTab("history");
-    // If we have optimistic data, show it immediately
-    // then do a background refresh after 2s (GAS usually processes within 2s)
     if(histLoaded && hist){
-      // show immediately
+      // Optimistic data shown immediately
+      // Background sync after 3s (GAS no-cors takes ~1-3s to process)
+      setTimeout(()=>{ loadHistory(dateFilter, true); }, 3000);
     } else {
       loadHistory(dateFilter);
     }
-    // Always background-refresh to sync with server
-    setTimeout(()=>{ loadHistory(dateFilter, true); }, 2200);
   };
 
   const changeMonth=(newMonth)=>{
@@ -1134,7 +1132,8 @@ function CashOutView({onClose,showToast,settings}){
   const submit=async()=>{
     setSaving(true);
     const expItems=items.filter(it=>it.name||it.price).map(it=>({name:it.name||"รายการ",price:parseFloat(it.price)||0}));
-    const today=new Date().toISOString().slice(0,10);
+    // ใช้วันที่ตาม Bangkok time ไม่ใช่ UTC
+    const today=new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
     const newExpense={
       id:Date.now(), date:today, supplier:supplier||"ไม่ระบุ",
       items:expItems, total, note:note||"",
@@ -1271,9 +1270,9 @@ function CashOutView({onClose,showToast,settings}){
                   style={{width:"100%",padding:"9px 12px",border:"1.5px solid #e5e7eb",borderRadius:10,fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",boxSizing:"border-box",outline:"none"}}/>
               </div>
 
-              <button onClick={()=>{if(total>0)setStep("confirm");}} disabled={total<=0}
-                style={{width:"100%",padding:"16px 0",background:total>0?"#2563eb":"#d1d5db",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.1em",cursor:total>0?"pointer":"not-allowed",fontFamily:"'Sarabun',sans-serif",boxShadow:total>0?"0 4px 16px rgba(37,99,235,.4)":"none"}}>
-                ถัดไป → ยืนยัน
+              <button onClick={()=>{ if(total>0&&!saving) submit(); }} disabled={total<=0||saving}
+                style={{width:"100%",padding:"16px 0",background:total>0&&!saving?"#2563eb":total<=0?"#d1d5db":"#9ca3af",color:"#fff",border:"none",borderRadius:14,fontWeight:800,fontSize:"1.1em",cursor:total>0&&!saving?"pointer":"not-allowed",fontFamily:"'Sarabun',sans-serif",boxShadow:total>0?"0 4px 16px rgba(37,99,235,.4)":"none",transition:"background .15s"}}>
+                {saving?"⏳ กำลังบันทึก...":"✅ บันทึกและจ่ายเงิน ฿"+total.toLocaleString("th-TH")}
               </button>
             </>
           )}
@@ -1312,11 +1311,17 @@ function CashOutView({onClose,showToast,settings}){
               <div style={{width:32,height:32,border:"3px solid #e5e7eb",borderTop:"3px solid #2563eb",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
               <div style={{fontSize:"0.9em"}}>กำลังโหลด...</div>
             </div>}
-          {!histLoading&&!histLoaded&&<div style={{textAlign:"center",padding:32,color:"#9ca3af",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
+          {!histLoading&&!histLoaded&&(
+            <div style={{textAlign:"center",padding:32,color:"#9ca3af",display:"flex",flexDirection:"column",alignItems:"center",gap:12}}>
               <div style={{fontSize:32}}>📋</div>
-              <div>ยังไม่มีข้อมูล</div>
-              <button onClick={()=>loadHistory(dateFilter,true)} style={{padding:"8px 20px",background:"#eff6ff",border:"1.5px solid #bfdbfe",borderRadius:10,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:600,color:"#2563eb",fontSize:"0.9em"}}>🔄 โหลดประวัติ</button>
-            </div>}
+              <div style={{fontWeight:600,color:"#374151"}}>กด โหลด เพื่อดูประวัติ</div>
+              <button onClick={()=>loadHistory(dateFilter,true)}
+                style={{padding:"10px 24px",background:"#2563eb",border:"none",borderRadius:10,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,color:"#fff",fontSize:"0.95em",boxShadow:"0 4px 14px rgba(37,99,235,.4)"}}>
+                🔄 โหลดประวัติจาก Server
+              </button>
+              <div style={{fontSize:"0.78em",color:"#9ca3af"}}>ข้อมูลถูกบันทึกใน Google Sheets แล้ว</div>
+            </div>
+          )}
           {!histLoading&&histLoaded&&hist&&hist.expenses.length===0&&(
             <div style={{textAlign:"center",padding:32,color:"#9ca3af"}}>
               <div style={{fontSize:28,marginBottom:8}}>📭</div>

@@ -515,7 +515,18 @@ function getExpenses(params) {
     ...e,
     id:    Number(e.id),
     total: Number(e.total)||0,
-    items: typeof e.items==="string"?JSON.parse(e.items||"[]"):(e.items||[]),
+    items: (() => {
+      try {
+        if (typeof e.items === "string") {
+          const s = e.items.trim();
+          return s ? JSON.parse(s) : [];
+        }
+        return Array.isArray(e.items) ? e.items : [];
+      } catch(err) {
+        Logger.log("items parse error: " + err.message + " | raw: " + e.items);
+        return [];
+      }
+    })(),
   }));
 
   // filter

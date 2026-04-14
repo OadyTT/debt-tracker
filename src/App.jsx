@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 // ══ Config ══════════════════════════════════════
-const APP_VERSION = "v2.1";
+const APP_VERSION = "v2.2";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxrCd34oeytvV3nogkJjJRVLWObLCUpWmE9yR9i2oHdFo-SYOqbU-T9tnzKrFA-5gcM/exec";
 const getLineRegisterPage = (oaId="") => GAS_URL + "?action=lineIdPage" + (oaId?"&oaId="+encodeURIComponent(oaId):"");
 const MAIN_ADMIN   = "thitiphankk@gmail.com";
@@ -615,11 +615,22 @@ function DueSummary({customers,transactions}){
 
 function loadHtml2Canvas(){
   return new Promise((resolve,reject)=>{
-    if(window.html2canvas){resolve(window.html2canvas);return;}
+    if(window.html2canvas){ resolve(window.html2canvas); return; }
+    // Try primary CDN
     const s=document.createElement("script");
     s.src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
-    s.onload=()=>resolve(window.html2canvas);
-    s.onerror=reject;
+    s.onload=()=>{
+      if(window.html2canvas) resolve(window.html2canvas);
+      else reject(new Error("html2canvas loaded but undefined"));
+    };
+    s.onerror=()=>{
+      // Fallback CDN
+      const s2=document.createElement("script");
+      s2.src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js";
+      s2.onload=()=>window.html2canvas?resolve(window.html2canvas):reject(new Error("html2canvas load failed"));
+      s2.onerror=()=>reject(new Error("Cannot load html2canvas"));
+      document.head.appendChild(s2);
+    };
     document.head.appendChild(s);
   });
 }
@@ -669,27 +680,73 @@ function ReportView({customers,transactions,onClose,settings}){
 
   // ── Save JPG ──
   const doSaveJpg=async()=>{
-    setSaving(true); setMsg("กำลังสร้างรูปภาพ...");
+    setSaving(true); setMsg("⏳ กำลังสร้างรูปภาพ...");
     try{
-      const h2c=await loadHtml2Canvas();
-      const canvas=await h2c(reportRef.current,{
-        scale:2, useCORS:true, backgroundColor:"#ffffff",
-        width:794, windowWidth:794,
-        onclone:(doc)=>{
-          const el=doc.getElementById("report-page");
-          if(el){ el.style.boxShadow="none"; el.style.margin="0"; }
+      const h2c = await loadHtml2Canvas();
+      setMsg("⏳ กำลัง render...");
+
+      // Clone the report page to a clean container for rendering
+      const el = reportRef.current;
+      if(!el){ setMsg("❌ ไม่พบ element"); setSaving(false); return; }
+
+      const canvas = await h2c(el, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width:  794,
+        height: el.scrollHeight,
+        windowWidth: 794,
+        onclone: (clonedDoc) => {
+          const cloned = clonedDoc.getElementById("report-page");
+          if(cloned){
+            cloned.style.boxShadow = "none";
+            cloned.style.margin    = "0";
+            cloned.style.borderRadius = "0";
+          }
+          // Hide no-print elements
+          clonedDoc.querySelectorAll(".no-print").forEach(el=>{ el.style.display="none"; });
         }
       });
-      const link=document.createElement("a");
-      link.download=`รายงาน_${type}_${month}.jpg`;
-      link.href=canvas.toDataURL("image/jpeg",0.95);
-      link.click();
-      setMsg("✅ บันทึกไฟล์แล้ว!");
-    }catch(e){
-      setMsg("❌ เกิดข้อผิดพลาด: "+e.message);
+
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.95);
+      const fileName = `รายงาน_${type}_${month}.jpg`;
+
+      // ── iOS / Android: open in new tab (download not supported) ──
+      const isIOS    = /iPad|iPhone|iPod/.test(navigator.userAgent);
+      const isAndroid= /Android/.test(navigator.userAgent);
+
+      if(isIOS || isAndroid){
+        // Mobile: open image in new window for long-press save
+        const win = window.open("", "_blank");
+        if(win){
+          win.document.write(
+            '<html><head><title>'+fileName+'</title><meta name="viewport" content="width=device-width"><style>body{margin:0;background:#000;display:flex;justify-content:center;align-items:flex-start;}img{max-width:100%;height:auto;}</style></head>' +
+            '<body><img src="'+dataUrl+'" alt="report"/>' +
+            '<p style="color:#fff;text-align:center;padding:12px;font-family:sans-serif;font-size:13px;">📱 กดค้างที่รูปแล้วเลือก "บันทึกรูปภาพ"</p></body></html>'
+          );
+          win.document.close();
+          setMsg("📱 เปิดแล้ว! กดค้างที่รูปเพื่อบันทึก");
+        } else {
+          setMsg("⚠️ กรุณาอนุญาต pop-up แล้วลองใหม่");
+        }
+      } else {
+        // Desktop: trigger download
+        const link = document.createElement("a");
+        link.download = fileName;
+        link.href = dataUrl;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setMsg("✅ บันทึกไฟล์แล้ว! (" + fileName + ")");
+      }
+    } catch(e){
+      console.error("html2canvas error:", e);
+      setMsg("❌ เกิดข้อผิดพลาด: " + (e.message||"unknown"));
     }
     setSaving(false);
-    setTimeout(()=>setMsg(""),3000);
+    setTimeout(()=>setMsg(""),5000);
   };
 
   // ── Shared styles ──
@@ -765,7 +822,7 @@ function ReportView({customers,transactions,onClose,settings}){
           </button>
           <button onClick={doSaveJpg} disabled={saving}
             style={{padding:"8px 16px",background:"#22c55e",border:"none",borderRadius:10,color:"#fff",cursor:saving?"wait":"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,fontSize:"0.9em",display:"flex",alignItems:"center",gap:6,opacity:saving?.7:1}}>
-            {saving?"⏳":"📸"} บันทึก JPG
+            {saving?"⏳":(/iPad|iPhone|iPod|Android/.test(navigator.userAgent)?"📱":"📸")} {/iPad|iPhone|iPod|Android/.test(navigator.userAgent)?"บันทึก (มือถือ)":"บันทึก JPG"}
           </button>
         </div>
       </div>

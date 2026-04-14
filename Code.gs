@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════
-//  สมุดหนี้โชห่วย — GAS Backend v2.1
+//  สมุดหนี้โชห่วย — GAS Backend v2.2
 //  Deploy → Web App → Execute as: Me → Anyone
 // ════════════════════════════════════════════════
 
@@ -10,7 +10,7 @@ const PHOTO_FOLDER_NAME  = "สมุดหนี้-photos";
 const FULL_VERSION_CODE  = "full-debt2026";
 const DEFAULT_PROMPTPAY  = "0871407251";
 const DEFAULT_SUPPORT_AMT= 399;
-const APP_VERSION        = "v2.1";
+const APP_VERSION        = "v2.2";
 
 function getSpreadsheet() {
   return SS_ID ? SpreadsheetApp.openById(SS_ID) : SpreadsheetApp.getActiveSpreadsheet();
@@ -21,7 +21,19 @@ function getOrCreate(ss, name, headers) {
   if (!sh) {
     sh = ss.insertSheet(name);
     sh.appendRow(headers);
-    sh.getRange(1,1,1,headers.length).setFontWeight("bold").setBackground("#1a3a2a").setFontColor("#fff");
+    sh.getRange(1,1,1,headers.length)
+      .setFontWeight("bold").setBackground("#1a3a2a").setFontColor("#fff");
+    // Set id column as text to prevent scientific notation on large numbers
+    sh.getRange("A:A").setNumberFormat("@");
+    // Set customerId column (B) as text for transaction sheets
+    if(headers.indexOf("customerId") > -1) {
+      sh.getRange("B:B").setNumberFormat("@");
+    }
+    // Set date columns as text
+    ["date","dueDate"].forEach(col=>{
+      const idx = headers.indexOf(col);
+      if(idx > -1) sh.getRange(1,idx+1,1000,1).setNumberFormat("@");
+    });
   }
   return sh;
 }
@@ -107,17 +119,36 @@ function getData() {
   const ss  = getSpreadsheet();
   const cSh = getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh = getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
+  // Sheets may auto-convert date strings to serial numbers
+  // Google Sheets epoch: Dec 30, 1899 → offset = 25569 days from Unix epoch
+  function toDateStr(v) {
+    if (!v && v !== 0) return null;
+    if (typeof v === "number" && v > 1000) {
+      // Convert Sheets serial to YYYY-MM-DD
+      const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+      return d.toISOString().slice(0, 10);
+    }
+    const s = String(v).trim();
+    return s && s !== "0" ? s.slice(0, 10) : null;
+  }
+
   const customers = sheetToObjects(cSh).map(c=>({
-    ...c, id:Number(c.id), totalDebt:Number(c.totalDebt)||0,
-    dueDate:c.dueDate||null, photo:c.photoUrl||null, note:c.note||""
+    ...c,
+    id:        Number(c.id),
+    totalDebt: Number(c.totalDebt)||0,
+    dueDate:   toDateStr(c.dueDate),
+    photo:     c.photoUrl||null,
+    note:      c.note||"",
   }));
   const transactions = sheetToObjects(tSh).map(t=>({
-    ...t, id:Number(t.id), customerId:Number(t.customerId),
-    total:Number(t.total)||0,
-    paid:t.paid===true||String(t.paid).toUpperCase()==="TRUE",
-    items:typeof t.items==="string"?JSON.parse(t.items||"[]"):(t.items||[]),
-    interestRate:Number(t.interestRate)||0,
-    dueDate:t.dueDate||null,
+    ...t,
+    id:           Number(t.id),
+    customerId:   Number(t.customerId),
+    total:        Number(t.total)||0,
+    paid:         t.paid===true||String(t.paid).toUpperCase()==="TRUE",
+    items:        typeof t.items==="string"?JSON.parse(t.items||"[]"):(t.items||[]),
+    interestRate: Number(t.interestRate)||0,
+    dueDate:      toDateStr(t.dueDate),
   }));
   return { ok:true, customers, transactions };
 }
@@ -210,12 +241,24 @@ function addDebt(d) {
   const ss =getSpreadsheet();
   const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
   const tSh=getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
+  const txRow = tSh.getLastRow() + 1;
   tSh.appendRow([d.txId||Date.now(),d.customerId,d.date,JSON.stringify(d.items),d.total,false,d.interestRate||0,d.dueDate||""]);
+  // Force text format on date cells to prevent auto-conversion
+  if(d.dueDate) {
+    tSh.getRange(txRow, 3).setNumberFormat("@"); // date column
+    tSh.getRange(txRow, 8).setNumberFormat("@"); // dueDate column
+  }
+  tSh.getRange(txRow, 3).setNumberFormat("@"); // always text for date
+
   const cData=cSh.getDataRange().getValues();
   for(let i=1;i<cData.length;i++){
     if(Number(cData[i][0])===Number(d.customerId)){
       cSh.getRange(i+1,4).setValue((Number(cData[i][3])||0)+d.total);
-      if(d.dueDate) cSh.getRange(i+1,5).setValue(d.dueDate);
+      if(d.dueDate) {
+        const cell = cSh.getRange(i+1,5);
+        cell.setNumberFormat("@"); // force text
+        cell.setValue(d.dueDate);
+      }
       break;
     }
   }
@@ -235,7 +278,11 @@ function updateDebt(d) {
       tSh.getRange(i+1,4).setValue(JSON.stringify(d.items));
       tSh.getRange(i+1,5).setValue(d.newTotal);
       if(d.interestRate!==undefined) tSh.getRange(i+1,7).setValue(d.interestRate);
-      if(d.dueDate!==undefined)      tSh.getRange(i+1,8).setValue(d.dueDate);
+      if(d.dueDate!==undefined) {
+        const dc=tSh.getRange(i+1,8);
+        dc.setNumberFormat("@");
+        dc.setValue(d.dueDate||"");
+      }
       break;
     }
   }
@@ -500,15 +547,60 @@ function backup() {
     const bkName = "backup_"+date.replace(" ","_").replace(":","-");
     const bkSh = ss.insertSheet(bkName);
 
-    // ลูกค้า
-    bkSh.appendRow(["=== ลูกค้า ==="]);
-    bkSh.appendRow(["id","ชื่อ","เบอร์","ยอดค้าง","วันทวง","รูป"]);
-    (data.customers||[]).forEach(c=>bkSh.appendRow([c.id,c.name,c.phone,c.totalDebt,c.dueDate||"",c.photo||""]));
+    // ── ลูกค้า ──
+    // Prefix with ' to prevent === being interpreted as formula
+    bkSh.appendRow(["[ ลูกค้า ]"]);
+    bkSh.getRange(1,1).setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
 
+    bkSh.appendRow(["id","ชื่อ","เบอร์","ยอดค้าง","วันทวง","photoUrl","note"]);
+    bkSh.getRange(2,1,1,7).setBackground("#d1fae5").setFontWeight("bold");
+
+    let startRow = 3;
+    (data.customers||[]).forEach((c,i)=>{
+      bkSh.appendRow([
+        String(c.id),       // id as string
+        c.name||"",
+        c.phone||"",
+        c.totalDebt||0,
+        c.dueDate||"",
+        c.photo||"",
+        c.note||""
+      ]);
+      // Force text format on id and date cells
+      bkSh.getRange(startRow+i, 1).setNumberFormat("@");
+      bkSh.getRange(startRow+i, 5).setNumberFormat("@");
+    });
+
+    const sepRow = startRow + (data.customers||[]).length;
     bkSh.appendRow([""]);
-    bkSh.appendRow(["=== รายการหนี้ ==="]);
+
+    // ── รายการหนี้ ──
+    bkSh.appendRow(["[ รายการหนี้ ]"]);
+    bkSh.getRange(sepRow+2,1).setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
+
     bkSh.appendRow(["id","customerId","วันที่","รายการ","ยอด","ชำระแล้ว","ดอกเบี้ย%","วันทวง"]);
-    (data.transactions||[]).forEach(t=>bkSh.appendRow([t.id,t.customerId,t.date,t.items.map(i=>i.name+"("+i.price+")").join("|"),t.total,t.paid,t.interestRate||0,t.dueDate||""]));
+    bkSh.getRange(sepRow+3,1,1,8).setBackground("#dbeafe").setFontWeight("bold");
+
+    let txStart = sepRow + 4;
+    (data.transactions||[]).forEach((t,i)=>{
+      bkSh.appendRow([
+        String(t.id),
+        String(t.customerId),
+        t.date||"",
+        (t.items||[]).map(it=>it.name+"("+it.price+")").join("|"),
+        t.total||0,
+        t.paid?"จ่ายแล้ว":"ค้าง",
+        t.interestRate||0,
+        t.dueDate||""
+      ]);
+      bkSh.getRange(txStart+i, 1).setNumberFormat("@"); // id
+      bkSh.getRange(txStart+i, 2).setNumberFormat("@"); // customerId
+      bkSh.getRange(txStart+i, 3).setNumberFormat("@"); // date
+      bkSh.getRange(txStart+i, 8).setNumberFormat("@"); // dueDate
+    });
+
+    // Auto-resize columns
+    try { bkSh.autoResizeColumns(1, 8); } catch(e){}
 
     return { ok:true, sheet:bkName, customers:(data.customers||[]).length, transactions:(data.transactions||[]).length };
   } catch(err){ return { ok:false, error:err.message }; }

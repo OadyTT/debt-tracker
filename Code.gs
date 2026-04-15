@@ -275,16 +275,18 @@ function addDebt(d) {
 //  updateDebt
 // ════════════════════════════════════════════════
 function updateDebt(d) {
-  const ss =getSpreadsheet();
-  const tSh=getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
-  const cSh=getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl"]);
-  const tData=tSh.getDataRange().getValues();
-  for(let i=1;i<tData.length;i++){
+  const ss  = getSpreadsheet();
+  const tSh = getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
+  const cSh = getOrCreate(ss,"ลูกค้า",    ["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
+  const tData = tSh.getDataRange().getValues();
+
+  for(let i=1; i<tData.length; i++){
     if(Number(tData[i][0])===Number(d.transactionId)){
-      tSh.getRange(i+1,4).setValue(JSON.stringify(d.items));
-      tSh.getRange(i+1,5).setValue(d.newTotal);
+      // Update items if provided
+      if(d.items!==undefined)     tSh.getRange(i+1,4).setValue(JSON.stringify(d.items));
+      if(d.newTotal!==undefined)  tSh.getRange(i+1,5).setValue(d.newTotal);
       if(d.interestRate!==undefined) tSh.getRange(i+1,7).setValue(d.interestRate);
-      if(d.dueDate!==undefined) {
+      if(d.dueDate!==undefined){
         const dc=tSh.getRange(i+1,8);
         dc.setNumberFormat("@");
         dc.setValue(d.dueDate||"");
@@ -292,12 +294,31 @@ function updateDebt(d) {
       break;
     }
   }
-  const allTx=sheetToObjects(tSh);
-  const unpaid=allTx.filter(t=>Number(t.customerId)===Number(d.customerId)&&String(t.paid).toUpperCase()!=="TRUE");
-  const newDebt=unpaid.reduce((s,t)=>s+Number(t.total),0);
-  const cData=cSh.getDataRange().getValues();
-  for(let i=1;i<cData.length;i++){
-    if(Number(cData[i][0])===Number(d.customerId)){cSh.getRange(i+1,4).setValue(newDebt);break;}
+
+  // ── Recalculate totalDebt for customer ──
+  const allTx  = sheetToObjects(tSh);
+  const unpaid = allTx.filter(t=>Number(t.customerId)===Number(d.customerId)&&String(t.paid).toUpperCase()!=="TRUE");
+  const newDebt= unpaid.reduce((s,t)=>s+Number(t.total),0);
+
+  // ── Also update customer's dueDate if provided ──
+  // Find the latest (soonest) unpaid dueDate across all transactions
+  const latestDue = unpaid
+    .map(t=>toDateStr(t.dueDate)||"")
+    .filter(Boolean)
+    .sort()[0] || "";  // earliest due date
+
+  const cData = cSh.getDataRange().getValues();
+  for(let i=1; i<cData.length; i++){
+    if(Number(cData[i][0])===Number(d.customerId)){
+      cSh.getRange(i+1,4).setValue(newDebt);
+      // Update customer dueDate: use explicitly provided value, OR recalculate from unpaid txs
+      if(d.dueDate!==undefined){
+        const cDue = cSh.getRange(i+1,5);
+        cDue.setNumberFormat("@");
+        cDue.setValue(d.dueDate||latestDue);
+      }
+      break;
+    }
   }
   return getData();
 }

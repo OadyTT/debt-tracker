@@ -697,8 +697,13 @@ function ReportView({customers,transactions,onClose,settings}){
       .then(d=>{
         if(d.ok){
           const allExp = d.allExpenses || d.expenses || [];
-          // Client-side month filter
-          const filtered = month ? allExp.filter(e=>String(e.date||"").startsWith(month)) : allExp;
+          console.log("GAS expenses:", allExp.length, "month:", month, "sample:", allExp[0]);
+          // Client-side month filter — month format: "2026-04"
+          const filtered = month ? allExp.filter(e=>{
+            const dStr = String(e.date||"");
+            return dStr.startsWith(month);
+          }) : allExp;
+          console.log("filtered:", filtered.length);
           setExpenses(filtered);
           if(allExp.length > 0 && filtered.length === 0){
             // Data exists but not in this month — that's normal, no warning
@@ -1976,9 +1981,13 @@ export default function App(){
   const handleUpdateDebt=async(txId,items,newTotal,ir,due)=>{
     if(!editingTx)return;
     const cid=editingTx.customerId;
+    // Optimistic: update tx + customer totalDebt + customer dueDate
     setTransactions(p=>p.map(t=>t.id===txId?{...t,items,total:newTotal,interestRate:ir,dueDate:due}:t));
     const allU=[...transactions.filter(t=>t.id!==txId&&t.customerId===cid&&!t.paid),{id:txId,total:newTotal,paid:false}];
-    setCustomers(p=>p.map(c=>c.id===cid?{...c,totalDebt:allU.reduce((s,t)=>s+t.total,0)}:c));
+    setCustomers(p=>p.map(c=>{
+      if(c.id!==cid) return c;
+      return {...c,totalDebt:allU.reduce((s,t)=>s+t.total,0),dueDate:due||c.dueDate};
+    }));
     setEditingTx(null);
     showToast("แก้ไขแล้ว ☁️ sync...");
     gasSync({action:"updateDebt",transactionId:txId,customerId:cid,items,newTotal,interestRate:ir,dueDate:due}).then(data=>{applyData(data);showToast("✅ sync สำเร็จ");});
@@ -2514,10 +2523,12 @@ export default function App(){
                           onSave={(txId,cid,due)=>{
                             setTransactions(p=>p.map(t=>t.id===txId?{...t,dueDate:due}:t));
                             setCustomers(p=>p.map(c=>c.id===cid?{...c,dueDate:due}:c));
-                            showToast("อัปเดตวันทวงแล้ว","📅");
+                            showToast("บันทึกวันทวงแล้ว 📅");
                             fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
                               body:JSON.stringify({action:"updateDebt",transactionId:txId,customerId:cid,
                                 items:tx.items,newTotal:tx.total,interestRate:tx.interestRate,dueDate:due})}).catch(()=>{});
+                            // Sync after 2s
+                            setTimeout(()=>gasGet("getData").then(d=>{if(d.ok)applyData(d);}),2000);
                           }}
                         />
                       )}

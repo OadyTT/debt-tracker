@@ -591,65 +591,69 @@ function backup() {
     const ss   = getSpreadsheet();
     const data = getData();
     const date = Utilities.formatDate(new Date(),"Asia/Bangkok","yyyy-MM-dd HH:mm");
-    const bkName = "backup_"+date.replace(" ","_").replace(":","-");
+    const bkName = "backup_"+date.replace(" ","_").replace(":","−");
     const bkSh = ss.insertSheet(bkName);
 
-    // ── ลูกค้า ──
-    // Prefix with ' to prevent === being interpreted as formula
-    bkSh.appendRow(["[ ลูกค้า ]"]);
-    bkSh.getRange(1,1).setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
+    // ── สำคัญ: ตั้ง text format ทั้งคอลัมน์ก่อนเขียนข้อมูล ──
+    // มิฉะนั้น Sheets จะ auto-convert "2026-04-12" → serial number
+    bkSh.getRange("A:B").setNumberFormat("@");  // id, ชื่อ/customerId
+    bkSh.getRange("E:E").setNumberFormat("@");  // วันทวง (ลูกค้า)
+    bkSh.getRange("C:C").setNumberFormat("@");  // วันที่ (transaction)
+    bkSh.getRange("H:H").setNumberFormat("@");  // วันทวง (transaction)
 
-    bkSh.appendRow(["id","ชื่อ","เบอร์","ยอดค้าง","วันทวง","photoUrl","note"]);
-    bkSh.getRange(2,1,1,7).setBackground("#d1fae5").setFontWeight("bold");
+    // ── Section: ลูกค้า ──
+    const custHeaders = ["id","ชื่อ","เบอร์","ยอดค้าง","วันทวง","photoUrl","note"];
+    bkSh.getRange(1,1).setValue("[ ลูกค้า ]")
+      .setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
+    bkSh.getRange(2,1,1,custHeaders.length).setValues([custHeaders])
+      .setBackground("#d1fae5").setFontWeight("bold");
 
-    let startRow = 3;
-    (data.customers||[]).forEach((c,i)=>{
-      bkSh.appendRow([
-        String(c.id),       // id as string
-        c.name||"",
-        c.phone||"",
-        c.totalDebt||0,
-        c.dueDate||"",
-        c.photo||"",
-        c.note||""
-      ]);
-      // Force text format on id and date cells
-      bkSh.getRange(startRow+i, 1).setNumberFormat("@");
-      bkSh.getRange(startRow+i, 5).setNumberFormat("@");
-    });
+    const custData = (data.customers||[]).map(c=>[
+      String(c.id), c.name||"", c.phone||"", c.totalDebt||0,
+      c.dueDate||"", c.photo||"", c.note||""
+    ]);
+    if(custData.length > 0){
+      bkSh.getRange(3, 1, custData.length, custHeaders.length).setValues(custData);
+    }
 
-    const sepRow = startRow + (data.customers||[]).length;
-    bkSh.appendRow([""]);
+    const sepRow  = 3 + custData.length;
 
-    // ── รายการหนี้ ──
-    bkSh.appendRow(["[ รายการหนี้ ]"]);
-    bkSh.getRange(sepRow+2,1).setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
+    // ── Section: รายการหนี้ ──
+    const txHeaders = ["id","customerId","วันที่","รายการ","ยอด","ชำระแล้ว","ดอกเบี้ย%","วันทวง"];
+    bkSh.getRange(sepRow+1, 1).setValue("[ รายการหนี้ ]")
+      .setBackground("#1a3a2a").setFontColor("#fff").setFontWeight("bold");
+    bkSh.getRange(sepRow+2, 1, 1, txHeaders.length).setValues([txHeaders])
+      .setBackground("#dbeafe").setFontWeight("bold");
 
-    bkSh.appendRow(["id","customerId","วันที่","รายการ","ยอด","ชำระแล้ว","ดอกเบี้ย%","วันทวง"]);
-    bkSh.getRange(sepRow+3,1,1,8).setBackground("#dbeafe").setFontWeight("bold");
+    const txData = (data.transactions||[]).map(t=>[
+      String(t.id),
+      String(t.customerId),
+      t.date||"",
+      (t.items||[]).map(it=>it.name+"("+it.price+")").join("|"),
+      t.total||0,
+      t.paid?"จ่ายแล้ว":"ค้าง",
+      t.interestRate||0,
+      t.dueDate||""
+    ]);
+    if(txData.length > 0){
+      bkSh.getRange(sepRow+3, 1, txData.length, txHeaders.length).setValues(txData);
+    }
 
-    let txStart = sepRow + 4;
-    (data.transactions||[]).forEach((t,i)=>{
-      bkSh.appendRow([
-        String(t.id),
-        String(t.customerId),
-        t.date||"",
-        (t.items||[]).map(it=>it.name+"("+it.price+")").join("|"),
-        t.total||0,
-        t.paid?"จ่ายแล้ว":"ค้าง",
-        t.interestRate||0,
-        t.dueDate||""
-      ]);
-      bkSh.getRange(txStart+i, 1).setNumberFormat("@"); // id
-      bkSh.getRange(txStart+i, 2).setNumberFormat("@"); // customerId
-      bkSh.getRange(txStart+i, 3).setNumberFormat("@"); // date
-      bkSh.getRange(txStart+i, 8).setNumberFormat("@"); // dueDate
-    });
+    // ── Freeze header rows & auto-resize ──
+    try {
+      bkSh.setFrozenRows(2);
+      bkSh.autoResizeColumns(1, 8);
+      // Bold the section labels
+      bkSh.getRange(1,1).setFontSize(11);
+      bkSh.getRange(sepRow+1,1).setFontSize(11);
+    } catch(e){}
 
-    // Auto-resize columns
-    try { bkSh.autoResizeColumns(1, 8); } catch(e){}
-
-    return { ok:true, sheet:bkName, customers:(data.customers||[]).length, transactions:(data.transactions||[]).length };
+    return {
+      ok:   true,
+      sheet: bkName,
+      customers:    custData.length,
+      transactions: txData.length,
+    };
   } catch(err){ return { ok:false, error:err.message }; }
 }
 

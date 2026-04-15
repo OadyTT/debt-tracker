@@ -511,47 +511,76 @@ function addExpense(d) {
   return { ok:true, id, ...getExpenses({}) };
 }
 
-// getExpenses — ดึงรายจ่าย (filter by month/date optional)
+// getExpenses — ดึงรายจ่ายทั้งหมด (client filters by month)
 function getExpenses(params) {
   const ss = getSpreadsheet();
   const sh = getOrCreate(ss,"รายจ่าย",[
     "id","date","supplier","items","total","note","createdAt"
   ]);
-  const raw = sheetToObjects(sh).map(e=>({
-    ...e,
-    id:    Number(e.id),
-    total: Number(e.total)||0,
-    date:  toDateStr(e.date) || "",  // convert serial if Sheets auto-converted
-    items: (() => {
-      try {
-        if (typeof e.items === "string") {
-          const s = e.items.trim();
-          return s ? JSON.parse(s) : [];
-        }
-        return Array.isArray(e.items) ? e.items : [];
-      } catch(err) {
-        Logger.log("items parse error: " + err.message + " | raw: " + e.items);
-        return [];
-      }
-    })(),
-  }));
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) {
+    return { ok:true, expenses:[], todayTotal:0, monthTotal:0, totalAll:0, count:0 };
+  }
+  const headers = data[0];
+  const idCol  = headers.indexOf("id");
+  const dtCol  = headers.indexOf("date");
+  const spCol  = headers.indexOf("supplier");
+  const itCol  = headers.indexOf("items");
+  const ttCol  = headers.indexOf("total");
+  const ntCol  = headers.indexOf("note");
 
-  // filter
-  const month = params && params.month; // "2026-04"
-  const date  = params && params.date;  // "2026-04-13"
-  let filtered = raw;
-  if(date)  filtered = raw.filter(e=>e.date===date);
-  else if(month) filtered = raw.filter(e=>String(e.date||"").startsWith(month));
+  const today     = Utilities.formatDate(new Date(),"Asia/Bangkok","yyyy-MM-dd");
+  const thisMonth = today.slice(0,7);
 
-  filtered.sort((a,b)=>b.id-a.id);
+  const allExpenses = [];
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    // Skip completely empty rows
+    if (!row[idCol] && !row[dtCol]) continue;
 
-  // summary
-  const today      = Utilities.formatDate(new Date(),"Asia/Bangkok","yyyy-MM-dd");
-  const thisMonth  = today.slice(0,7);
-  const todayTotal = raw.filter(e=>e.date===today).reduce((s,e)=>s+e.total,0);
-  const monthTotal = raw.filter(e=>String(e.date||"").startsWith(thisMonth)).reduce((s,e)=>s+e.total,0);
+    const rawDate = row[dtCol];
+    const dateStr = toDateStr(rawDate) || "";  // handles serial numbers AND strings
 
-  return { ok:true, expenses:filtered, todayTotal, monthTotal };
+    let items = [];
+    try {
+      const rawItems = String(row[itCol]||"").trim();
+      items = rawItems ? JSON.parse(rawItems) : [];
+    } catch(e) { items = []; }
+
+    allExpenses.push({
+      id:       Number(row[idCol]) || 0,
+      date:     dateStr,
+      supplier: String(row[spCol]||""),
+      items:    items,
+      total:    Number(row[ttCol])||0,
+      note:     String(row[ntCol]||""),
+    });
+  }
+
+  // Sort newest first
+  allExpenses.sort((a,b) => b.id - a.id);
+
+  // Summary (all time)
+  const todayTotal = allExpenses.filter(e=>e.date===today).reduce((s,e)=>s+e.total,0);
+  const monthTotal = allExpenses.filter(e=>e.date.startsWith(thisMonth)).reduce((s,e)=>s+e.total,0);
+
+  // Apply filter if requested (for report view)
+  const month  = params && (params.month || "");
+  const dateF  = params && (params.date  || "");
+  let filtered = allExpenses;
+  if (dateF)  filtered = allExpenses.filter(e=>e.date===dateF);
+  else if (month && month.length >= 7) filtered = allExpenses.filter(e=>e.date.startsWith(month));
+
+  Logger.log("getExpenses: total=" + allExpenses.length + " filtered=" + filtered.length + " month=" + month);
+
+  return {
+    ok:         true,
+    expenses:   filtered,
+    allExpenses: allExpenses,  // for client-side debugging
+    todayTotal, monthTotal,
+    totalAll:   allExpenses.reduce((s,e)=>s+e.total,0),
+    count:      allExpenses.length,
+  };
 }
 
 // ════════════════════════════════════════════════

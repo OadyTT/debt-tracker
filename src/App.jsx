@@ -690,16 +690,21 @@ function ReportView({customers,transactions,onClose,settings}){
   // load expenses for month when needed
   useEffect(()=>{
     if(type!=="expenses") return;
-    setExpenses([]); // clear before fetch
-    fetch(`${GAS_URL}?action=getExpenses&month=${month}`)
+    setExpenses([]);
+    setExpenseWarn(false);
+    fetch(`${GAS_URL}?action=getExpenses`)
       .then(r=>r.json())
       .then(d=>{
-        if(d.ok && (d.expenses||[]).length > 0){
-          setExpenses(d.expenses||[]);
-        } else if(d.ok && (d.expenses||[]).length === 0){
-          // GAS returned 0 - might be date serial bug → show warning
-          setExpenses([]);
-          setExpenseWarn(true);
+        if(d.ok){
+          const allExp = d.allExpenses || d.expenses || [];
+          // Client-side month filter
+          const filtered = month ? allExp.filter(e=>String(e.date||"").startsWith(month)) : allExp;
+          setExpenses(filtered);
+          if(allExp.length > 0 && filtered.length === 0){
+            // Data exists but not in this month — that's normal, no warning
+          } else if(allExp.length === 0){
+            setExpenseWarn(false); // truly no data
+          }
         }
       }).catch(()=>{});
   },[type,month]);
@@ -984,17 +989,7 @@ function ReportView({customers,transactions,onClose,settings}){
               <ReportHeader title={`รายงานรายจ่ายซื้อสด — ${monthLabel}`} subtitle="โหมดรถส่งของ"/>
               {expenses.length===0?(
                 <div style={{textAlign:"center",padding:30}}>
-                  {expenseWarn?(
-                    <div style={{background:"#fff7ed",borderRadius:12,padding:14,border:"1.5px solid #fde68a",textAlign:"left"}}>
-                      <div style={{fontWeight:700,color:"#92400e",marginBottom:6,fontSize:"0.9em"}}>⚠️ ข้อมูลอยู่ใน Sheets แต่โหลดไม่ได้</div>
-                      <div style={{fontSize:"0.8em",color:"#92400e",lineHeight:1.7}}>
-                        Code.gs ต้อง Redeploy:<br/>
-                        Apps Script → Deploy → Manage → Edit → New version → Deploy
-                      </div>
-                    </div>
-                  ):(
-                    <div style={{color:"#9ca3af"}}>ไม่มีรายจ่ายในเดือนนี้</div>
-                  )}
+                  <div style={{color:"#9ca3af"}}>ไม่มีรายจ่ายในเดือนนี้</div>
                 </div>
               ):(
                 <>
@@ -1159,25 +1154,35 @@ function CashOutView({onClose,showToast,settings}){
     if(histLoaded&&!force) return; // cache hit
     setHistLoading(true);
     try{
-      const res=await fetch(`${GAS_URL}?action=getExpenses&month=${targetMonth}`);
+      // Fetch ALL expenses (no month filter) — more reliable
+      const res=await fetch(`${GAS_URL}?action=getExpenses`);
       const d=await res.json();
       if(d.ok){
-        // ── Smart merge: don't replace good data with empty ──
-        // If GAS returns 0 items but we have optimistic items → keep optimistic
-        const incoming = d.expenses||[];
-        const hasOptimistic = hist && (hist.expenses||[]).length > 0;
-        if(incoming.length > 0){
-          // GAS returned real data — use it
-          setHist(d);
+        const allExp = d.allExpenses || d.expenses || [];
+        // Client-side filter by month
+        const filtered = targetMonth
+          ? allExp.filter(e=>String(e.date||"").startsWith(targetMonth))
+          : allExp;
+        // Recalculate totals client-side
+        const todayBkk  = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
+        const todayTotal = allExp.filter(e=>e.date===todayBkk).reduce((s,e)=>s+e.total,0);
+        const monthTotal = allExp.filter(e=>String(e.date||"").startsWith(targetMonth)).reduce((s,e)=>s+e.total,0);
+        const merged = {...d, expenses:filtered, todayTotal, monthTotal};
+
+        if(allExp.length > 0){
+          // Real data from GAS
+          setHist(merged);
           setHistLoaded(true);
-        } else if(!hasOptimistic){
-          // Both empty — show empty (maybe truly no data)
-          setHist(d);
-          setHistLoaded(true);
+        } else {
+          // GAS returned 0 — keep optimistic if we have it
+          const hasOptimistic = hist && (hist.expenses||[]).length > 0;
+          if(!hasOptimistic){
+            setHist(merged);
+            setHistLoaded(true);
+          }
         }
-        // else: GAS returned empty but we have optimistic → keep optimistic
       }
-    }catch(e){ console.error('loadHistory error:', e); }
+    }catch(e){ console.error('loadHistory error:',e); }
     setHistLoading(false);
   };
 
@@ -1195,8 +1200,16 @@ function CashOutView({onClose,showToast,settings}){
 
   const changeMonth=(newMonth)=>{
     setDateFilter(newMonth);
-    setHistLoaded(false);          // force reload for new month
-    loadHistory(newMonth,true);
+    // If we have all expenses already, re-filter client-side (instant)
+    if(hist && hist.allExpenses){
+      const filtered = hist.allExpenses.filter(e=>String(e.date||"").startsWith(newMonth));
+      const todayBkk = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
+      const monthTotal = hist.allExpenses.filter(e=>String(e.date||"").startsWith(newMonth)).reduce((s,e)=>s+e.total,0);
+      setHist({...hist, expenses:filtered, monthTotal});
+    } else {
+      setHistLoaded(false);
+      loadHistory(newMonth,true);
+    }
   };
 
   const submit=async()=>{
@@ -1216,12 +1229,20 @@ function CashOutView({onClose,showToast,settings}){
     // ── Optimistic update ──
     // เพิ่ม expense ลง hist ทันทีโดยไม่รอ GAS
     setHist(prev=>{
-      if(!prev) return { expenses:[newExpense], todayTotal:total, monthTotal:total };
+      const todayBkk = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
       const isSameMonth = today.startsWith(dateFilter);
+      if(!prev) return {
+        expenses:[newExpense], allExpenses:[newExpense],
+        todayTotal:total, monthTotal:total
+      };
+      const newAll = [newExpense,...(prev.allExpenses||prev.expenses||[])];
+      const newFiltered = dateFilter ? newAll.filter(e=>String(e.date||"").startsWith(dateFilter)) : newAll;
       return {
-        expenses:   [newExpense, ...(prev.expenses||[])],
-        todayTotal: (prev.todayTotal||0) + total,
-        monthTotal: isSameMonth?(prev.monthTotal||0)+total:(prev.monthTotal||0),
+        ...prev,
+        expenses:    newFiltered,
+        allExpenses: newAll,
+        todayTotal:  newAll.filter(e=>e.date===todayBkk).reduce((s,e)=>s+e.total,0),
+        monthTotal:  isSameMonth?(prev.monthTotal||0)+total:(prev.monthTotal||0),
       };
     });
     setHistLoaded(true);  // mark as loaded so goHistory uses optimistic data
@@ -1394,16 +1415,13 @@ function CashOutView({onClose,showToast,settings}){
           )}
           {!histLoading&&histLoaded&&hist&&hist.expenses.length===0&&(
             <div style={{textAlign:"center",padding:20}}>
-              <div style={{background:"#fff7ed",borderRadius:12,padding:14,border:"1.5px solid #fde68a",textAlign:"left",marginBottom:12}}>
-                <div style={{fontWeight:700,color:"#92400e",marginBottom:6,fontSize:"0.9em"}}>⚠️ มีข้อมูลใน Sheets แต่โหลดไม่ได้</div>
-                <div style={{fontSize:"0.8em",color:"#92400e",lineHeight:1.6}}>
-                  Code.gs ต้อง Redeploy:<br/>
-                  Apps Script → Deploy → Manage → Edit → New version → Deploy
-                </div>
+              <div style={{textAlign:"center",color:"#9ca3af",marginBottom:16}}>
+                <div style={{fontSize:28,marginBottom:6}}>📭</div>
+                <div>ไม่มีรายจ่ายเดือนนี้</div>
               </div>
               <button onClick={()=>loadHistory(dateFilter,true)}
                 style={{padding:"10px 24px",background:"#2563eb",border:"none",borderRadius:10,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontWeight:700,color:"#fff",fontSize:"0.9em"}}>
-                🔄 ลองโหลดใหม่
+                🔄 โหลดใหม่
               </button>
             </div>
           )}

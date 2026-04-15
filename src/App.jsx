@@ -1879,7 +1879,7 @@ export default function App(){
       const [dr,sr,pr]=await Promise.all([gasGet("getData"),gasGet("getSettings"),gasGet("getPending")]);
       applyData(dr);
       if(sr.ok&&sr.settings){ setSettings(s=>({...s,...sr.settings})); setDraft(d=>({...d,...sr.settings})); }
-      if(pr.ok) setPendingHelpers(pr.pending||[]);
+      if(pr.ok && pr.pending) setPendingHelpers(pr.pending);
     }catch{setInitState("error");}
     setRefreshing(false);
   },[]);
@@ -2040,10 +2040,23 @@ export default function App(){
   };
 
   const doApproveHelper=async(uid)=>{
-    await gasPostRead({action:"approveHelper",uid}).catch(()=>{});
-    setPendingHelpers(p=>p.filter(h=>h.uid!==uid));
-    showToast("อนุมัติแล้ว! ส่ง LINE แล้ว","✅");
-    loadAll(true);
+    try{
+      const res=await gasPostRead({action:"approveHelper",uid});
+      if(res.ok){
+        // Use returned pending list if available
+        if(res.pending) setPendingHelpers(res.pending);
+        else setPendingHelpers(p=>p.filter(h=>h.uid!==uid));
+        showToast("อนุมัติแล้ว! ส่ง LINE แล้ว 🎉","✅",3000);
+        // Reload settings to get updated adminLineUids
+        gasGet("getSettings").then(sr=>{ if(sr.ok&&sr.settings){ setSettings(s=>({...s,...sr.settings})); setDraft(d=>({...d,...sr.settings})); }});
+      } else {
+        showToast("เกิดข้อผิดพลาด","❌");
+      }
+    }catch(e){
+      // Fallback: optimistic
+      setPendingHelpers(p=>p.filter(h=>h.uid!==uid));
+      showToast("อนุมัติแล้ว (offline)","✅");
+    }
   };
   const doRejectHelper=async(uid)=>{
     await gasPostRead({action:"rejectHelper",uid});

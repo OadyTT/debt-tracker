@@ -769,7 +769,7 @@ function handleLineWebhook(body) {
 
     // ── เพิ่มเพื่อน (Follow event) ──
     if (ev.type === "follow") {
-      addPendingHelper(uid);
+      try { addPendingHelper(uid); } catch(e) { Logger.log("addPendingHelper error: "+e.message); }
       replyLine(ev.replyToken,
         "👋 สวัสดีครับ! ระบบลูกหนี้ร้านอ้อ" +
         "\n══════════════════" +
@@ -804,7 +804,7 @@ function handleLineWebhook(body) {
       }
     }
   });
-  return ContentService.createTextOutput("OK");
+  return ContentService.createTextOutput(JSON.stringify({ok:true})).setMimeType(ContentService.MimeType.JSON);
 }
 
 // ════════════════════════════════════════════════
@@ -1016,7 +1016,7 @@ function addPendingHelper(uid) {
   const sh  = getOrCreate(ss, "ผู้ช่วย-pending",
                 ["uid","displayName","pictureUrl","timestamp","status"]);
   const rows = sheetToObjects(sh);
-  if (rows.find(r => r.uid === uid)) {
+  if (rows.find(r => String(r.uid||"").trim() === String(uid||"").trim())) {
     // already exists — try update profile if blank
     const data = sh.getDataRange().getValues();
     for (let i = 1; i < data.length; i++) {
@@ -1097,17 +1097,36 @@ function refreshPendingProfiles() {
 }
 
 function getPendingHelpers() {
-  const ss = getSpreadsheet();
-  const sh = getOrCreate(ss, "ผู้ช่วย-pending",
-               ["uid","displayName","pictureUrl","timestamp","status"]);
-  const rows = sheetToObjects(sh).map(r => ({
-    ...r,
-    // ดึง pictureUrl จาก Note (เพราะ cell มี formula)
-    pictureUrl: sh.getRange(
-      (sheetToObjects(sh).findIndex(x=>x.uid===r.uid)||0)+2, 3
-    ).getNote() || r.pictureUrl || "",
-  }));
-  return { ok:true, pending:rows };
+  const ss   = getSpreadsheet();
+  const sh   = getOrCreate(ss, "ผู้ช่วย-pending",
+                 ["uid","displayName","pictureUrl","timestamp","status"]);
+  const data = sh.getDataRange().getValues();
+  if (data.length < 2) return { ok:true, pending:[] };
+
+  const headers = data[0];
+  const uidCol  = headers.indexOf("uid");
+  const nameCol = headers.indexOf("displayName");
+  const picCol  = headers.indexOf("pictureUrl");
+  const tsCol   = headers.indexOf("timestamp");
+  const stCol   = headers.indexOf("status");
+
+  const pending = [];
+  for (let i = 1; i < data.length; i++) {
+    const uid = data[i][uidCol] || "";
+    if (!uid) continue;
+    // pictureUrl: stored in Note because cell has =IMAGE() formula
+    let pictureUrl = "";
+    try { pictureUrl = sh.getRange(i+1, picCol+1).getNote() || ""; } catch(e) {}
+
+    pending.push({
+      uid:         uid,
+      displayName: data[i][nameCol] || "",
+      pictureUrl:  pictureUrl,
+      timestamp:   data[i][tsCol]   || "",
+      status:      data[i][stCol]   || "pending",
+    });
+  }
+  return { ok:true, pending };
 }
 
 function approveHelper(d) {
@@ -1128,8 +1147,9 @@ function approveHelper(d) {
   const uids = cfg.adminLineUids || [];
   if (!uids.includes(d.uid)) uids.push(d.uid);
   saveSettings({ settings: { ...cfg, adminLineUids: uids } });
-  sendLineMessage(d.uid, "✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว!\nคุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้");
-  return { ok:true };
+  sendLineMessage(d.uid, "✅ คุณได้รับการอนุมัติเป็นผู้ช่วย Admin แล้ว!\nคุณจะได้รับแจ้งเตือนทุกครั้งที่มีการบันทึกหนี้ใหม่หรือรับชำระ 🎉");
+  // Return updated pending list so app refreshes
+  return { ok:true, pending: getPendingHelpers().pending };
 }
 
 function rejectHelper(d) {
@@ -1145,7 +1165,7 @@ function rejectHelper(d) {
       break;
     }
   }
-  return { ok:true };
+  return { ok:true, pending: getPendingHelpers().pending };
 }
 
 // ════════════════════════════════════════════════

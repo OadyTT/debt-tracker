@@ -1,5 +1,5 @@
 // ════════════════════════════════════════════════
-//  สมุดหนี้โชห่วย — GAS Backend v2.2
+//  สมุดหนี้โชห่วย — GAS Backend v2.3
 //  Deploy → Web App → Execute as: Me → Anyone
 // ════════════════════════════════════════════════
 
@@ -10,7 +10,7 @@ const PHOTO_FOLDER_NAME  = "สมุดหนี้-photos";
 const FULL_VERSION_CODE  = "full-debt2026";
 const DEFAULT_PROMPTPAY  = "0871407251";
 const DEFAULT_SUPPORT_AMT= 399;
-const APP_VERSION        = "v2.2";
+const APP_VERSION        = "v2.3";
 
 function getSpreadsheet() {
   return SS_ID ? SpreadsheetApp.openById(SS_ID) : SpreadsheetApp.getActiveSpreadsheet();
@@ -112,6 +112,7 @@ function doPost(e) {
       case "saveSettings":   return jsonResponse(saveSettings(d));
       case "notifyEmail":    return jsonResponse(notifyEmail(d));
       case "notifyLine":     return jsonResponse(notifyLine(d));
+      case "deleteCustomer":     return jsonResponse(deleteCustomer(d));
       case "updateCustomerNote": return jsonResponse(updateCustomerNote(d));
       case "updateCustomerPhone": return jsonResponse(updateCustomerPhone(d));
       case "approveHelper":  return jsonResponse(approveHelper(d));
@@ -390,6 +391,36 @@ function updateCustomerPhone(d) {
       break;
     }
   }
+  return getData();
+}
+
+// ════════════════════════════════════════════════
+//  deleteCustomer — ลบลูกค้า + รายการหนี้ทั้งหมด
+//  d: { customerId }
+// ════════════════════════════════════════════════
+function deleteCustomer(d) {
+  const ss  = getSpreadsheet();
+  const cSh = getOrCreate(ss,"ลูกค้า",["id","name","phone","totalDebt","dueDate","photoUrl","note"]);
+  const tSh = getOrCreate(ss,"รายการหนี้",["id","customerId","date","items","total","paid","interestRate","dueDate"]);
+  const cid = Number(d.customerId);
+
+  // Delete from ลูกค้า (bottom-up to avoid row-shift issues)
+  const cData = cSh.getDataRange().getValues();
+  for(let i=cData.length-1; i>=1; i--){
+    if(Number(cData[i][0])===cid){
+      cSh.deleteRow(i+1);
+      break;
+    }
+  }
+
+  // Delete all transactions for this customer
+  const tData = tSh.getDataRange().getValues();
+  for(let i=tData.length-1; i>=1; i--){
+    if(Number(tData[i][1])===cid){
+      tSh.deleteRow(i+1);
+    }
+  }
+
   return getData();
 }
 

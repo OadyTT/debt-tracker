@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 
 // ══ Config ══════════════════════════════════════
-const APP_VERSION = "v2.2";
+const APP_VERSION = "v2.3";
 const GAS_URL = "https://script.google.com/macros/s/AKfycbxrCd34oeytvV3nogkJjJRVLWObLCUpWmE9yR9i2oHdFo-SYOqbU-T9tnzKrFA-5gcM/exec";
 const getLineRegisterPage = (oaId="") => GAS_URL + "?action=lineIdPage" + (oaId?"&oaId="+encodeURIComponent(oaId):"");
 const MAIN_ADMIN   = "thitiphankk@gmail.com";
@@ -277,6 +277,34 @@ function PhotoUploadBtn({customerId,onUploaded}){
         {state==="uploading"?"⏳":state==="done"?"✅":state==="error"?"❌":"📷"}
       </button>
     </>
+  );
+}
+
+// ══ Delete Confirm Modal ═══════════════════════════
+function DeleteConfirmModal({name,onConfirm,onCancel}){
+  return(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:3000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{background:"#fff",borderRadius:20,padding:24,width:"100%",maxWidth:360,textAlign:"center"}} onClick={e=>e.stopPropagation()}>
+        <div style={{fontSize:48,marginBottom:12}}>🗑️</div>
+        <div style={{fontWeight:800,fontSize:"1.15em",color:"#1a3a2a",marginBottom:8}}>ลบลูกหนี้</div>
+        <div style={{color:"#6b7280",fontSize:"0.95em",marginBottom:6}}>ต้องการลบ</div>
+        <div style={{fontWeight:700,fontSize:"1.1em",color:"#ef4444",marginBottom:6}}>"{name}"</div>
+        <div style={{color:"#6b7280",fontSize:"0.85em",marginBottom:20}}>
+          รายการหนี้ทั้งหมดจะถูกลบด้วย<br/>
+          <span style={{color:"#ef4444",fontWeight:600}}>ไม่สามารถกู้คืนได้!</span>
+        </div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={onCancel}
+            style={{flex:1,padding:"12px 0",background:"#f3f4f6",color:"#374151",border:"none",borderRadius:12,fontWeight:700,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em"}}>
+            ยกเลิก
+          </button>
+          <button onClick={onConfirm}
+            style={{flex:1,padding:"12px 0",background:"#ef4444",color:"#fff",border:"none",borderRadius:12,fontWeight:800,cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.95em",boxShadow:"0 4px 14px rgba(239,68,68,.4)"}}>
+            🗑️ ลบเลย
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1135,14 +1163,14 @@ function ReportView({customers,transactions,onClose,settings}){
 }
 
 // ══ CashOut View — โหมดรถส่งของ ══════════════════
-function CashOutView({onClose,showToast,settings}){
+function CashOutView({onClose,showToast,settings,expenseCache,onExpenseCacheUpdate}){
   const [step,    setStep]    = useState("form");
   const [supplier,setSupplier]= useState("");
   const [items,   setItems]   = useState([{name:"",price:""}]);
   const [note,    setNote]    = useState("");
-  const [hist,    setHist]    = useState(null);
+  const [hist,    setHist]    = useState(expenseCache||null);
   const [histLoading,setHistLoading]=useState(false);
-  const [histLoaded, setHistLoaded] = useState(false);  // cache: don't refetch every tab switch
+  const [histLoaded, setHistLoaded] = useState(!!expenseCache);
   const [tab,     setTab]     = useState("new");
   const [saving,  setSaving]  = useState(false);
   const [dateFilter,setDateFilter]=useState(new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'}).slice(0,7));
@@ -1178,6 +1206,7 @@ function CashOutView({onClose,showToast,settings}){
           // Real data from GAS
           setHist(merged);
           setHistLoaded(true);
+          if(onExpenseCacheUpdate) onExpenseCacheUpdate(merged);
         } else {
           // GAS returned 0 — keep optimistic if we have it
           const hasOptimistic = hist && (hist.expenses||[]).length > 0;
@@ -1236,21 +1265,24 @@ function CashOutView({onClose,showToast,settings}){
     setHist(prev=>{
       const todayBkk = new Date().toLocaleDateString('sv-SE',{timeZone:'Asia/Bangkok'});
       const isSameMonth = today.startsWith(dateFilter);
+      // eslint-disable-next-line no-unused-vars
       if(!prev) return {
         expenses:[newExpense], allExpenses:[newExpense],
         todayTotal:total, monthTotal:total
       };
       const newAll = [newExpense,...(prev.allExpenses||prev.expenses||[])];
       const newFiltered = dateFilter ? newAll.filter(e=>String(e.date||"").startsWith(dateFilter)) : newAll;
-      return {
+      const updated = {
         ...prev,
         expenses:    newFiltered,
         allExpenses: newAll,
         todayTotal:  newAll.filter(e=>e.date===todayBkk).reduce((s,e)=>s+e.total,0),
         monthTotal:  isSameMonth?(prev.monthTotal||0)+total:(prev.monthTotal||0),
       };
+      if(onExpenseCacheUpdate) onExpenseCacheUpdate(updated);
+      return updated;
     });
-    setHistLoaded(true);  // mark as loaded so goHistory uses optimistic data
+    setHistLoaded(true);
 
     setSaving(false);
     setStep("done");
@@ -1861,7 +1893,9 @@ export default function App(){
   const [pendingHelpers,setPendingHelpers]=useState([]);
   const [showSupport,  setShowSupport]  = useState(false);
   const [showHelp,     setShowHelp]     = useState(false);
-  const [showCashOut,  setShowCashOut]  = useState(false);
+  const [showCashOut,    setShowCashOut]    = useState(false);
+  const [expenseCache,   setExpenseCache]   = useState(null); // Persist across CashOut open/close
+  const [deleteConfirm,  setDeleteConfirm]  = useState(null); // {id, name}
   const [showReport,   setShowReport]   = useState(false);
   const [versionCode,  setVersionCode]  = useState("");
   const [calDayInfo,   setCalDayInfo]   = useState(null);
@@ -2009,6 +2043,24 @@ export default function App(){
     showToast("บันทึก Note แล้ว","📝");
     fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
       body:JSON.stringify({action:"updateCustomerNote",customerId:cid,note})}).catch(()=>{});
+  };
+
+  // ── Delete customer + all transactions ──
+  const handleDeleteCustomer=async(cid,name)=>{
+    setDeleteConfirm({id:cid,name});
+  };
+  const confirmDeleteCustomer=async()=>{
+    if(!deleteConfirm) return;
+    const {id:cid} = deleteConfirm;
+    setDeleteConfirm(null);
+    // Optimistic
+    setCustomers(p=>p.filter(c=>c.id!==cid));
+    setTransactions(p=>p.filter(t=>t.customerId!==cid));
+    setView("list");
+    showToast("ลบลูกหนี้แล้ว","🗑️");
+    fetch(GAS_URL,{method:"POST",mode:"no-cors",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"deleteCustomer",customerId:cid})}).catch(()=>{});
+    setTimeout(()=>loadAll(true),3000);
   };
 
   const doSaveSettings=async()=>{
@@ -2167,7 +2219,7 @@ export default function App(){
   if(showPin) return <PinScreen onSuccess={()=>{setShowPin(false);setPinUnlocked(true);setDraft({...settings});setView("settings");}} onCancel={()=>setShowPin(false)}/>;
 
   // ── Global modals (render over any view) ──
-  if(showCashOut) return <CashOutView onClose={()=>setShowCashOut(false)} showToast={showToast} settings={settings}/>;
+  if(showCashOut) return <CashOutView onClose={()=>setShowCashOut(false)} showToast={showToast} settings={settings} expenseCache={expenseCache} onExpenseCacheUpdate={setExpenseCache}/>;
   if(showReport)  return <ReportView  customers={customers} transactions={transactions} onClose={()=>setShowReport(false)} settings={settings}/>;
 
   // ── SETTINGS ────────────────────────────────
@@ -2475,6 +2527,10 @@ export default function App(){
               <button onClick={()=>setView("list")} style={{background:"none",border:"none",color:"#fff",fontSize:22,cursor:"pointer"}}>←</button>
               <span style={{fontWeight:700,fontSize:"1.1em",flex:1}}>📋 ประวัติลูกหนี้</span>
               <button onClick={()=>loadAll(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:10,padding:"6px 12px",color:"#fff",cursor:"pointer",fontFamily:"'Sarabun',sans-serif",fontSize:"0.82em",fontWeight:600}}>{refreshing?"⏳":"🔄"}</button>
+              <button onClick={()=>handleDeleteCustomer(c.id,c.name)}
+                style={{background:"rgba(239,68,68,.25)",border:"1px solid rgba(239,68,68,.5)",borderRadius:10,padding:"6px 10px",color:"#fca5a5",cursor:"pointer",fontSize:"1em"}}>
+                🗑️
+              </button>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:14}}>
               <div style={{position:"relative",width:64,height:64,flexShrink:0}}>
@@ -2893,6 +2949,7 @@ export default function App(){
         {toast&&<Toast msg={toast.msg} icon={toast.icon}/>}
         {showSupport&&<SupportPage settings={settings} onClose={()=>setShowSupport(false)}/>}
         {showHelp&&<HelpModal onClose={()=>setShowHelp(false)}/>}
+        {deleteConfirm&&<DeleteConfirmModal name={deleteConfirm.name} onConfirm={confirmDeleteCustomer} onCancel={()=>setDeleteConfirm(null)}/>}
         {showQR&&<QRModal c={customers[0]||{name:"?",totalDebt:0,id:0}} settings={settings} onPaid={()=>{}} onClose={()=>setShowQR(false)}/>}
         <div style={{background:"linear-gradient(135deg,#1a3a2a 0%,#1a7a4a 100%)",color:"#fff",padding:"24px 16px 32px",position:"relative",overflow:"hidden"}}>
           <div style={{position:"absolute",top:-20,right:-20,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,.06)"}}/>
